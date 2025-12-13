@@ -229,14 +229,15 @@ class SummaryManager {
 
     const embed = new EmbedBuilder()
       .setColor(0x3498db)
-      .setTitle(`📝 Résumé - #${channel.name}`)
-      .setDescription(summary)
+      .setTitle(`Résumé - #${channel.name}`)
+      .setDescription(summary);
 
     try {
       await targetChannel.send({ embeds: [embed] });
       logger.info(`Résumé envoyé dans #${targetChannel.name}`);
     } catch (error) {
       logger.error('Erreur lors de l\'envoi du résumé:', error);
+      throw error;
     }
   }
 
