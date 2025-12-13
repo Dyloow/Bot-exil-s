@@ -40,7 +40,7 @@
     "summaryLength": "brief"
   },
   "ai": {
-    "model": "gpt-4o-mini",
+    "model": "gpt-5-nano",
     "maxTokensOutput": 500,
     "temperature": 0.3,
     "systemPrompt": "Tu dois résumer cette conversation Discord comme si tu la racontais à un pote à l’oral : explique en quelques phrases ce qui s’est passé dans l’ensemble, dans quel ordre, pourquoi les gens parlaient de ça, ce qui a été testé ou décidé, avec un ton naturel et détendu, sans listes ni formalisme, en reliant les messages entre eux ; mets en **gras** (Markdown) les mots ou sujets clés importants au fil du texte, puis ajoute à la fin, sur une nouvelle ligne, un **TL;DR** encore plus concis en 1–2 phrases maximum.\n"
