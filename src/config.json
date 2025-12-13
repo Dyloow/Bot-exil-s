@@ -36,7 +36,7 @@
     "excludeBotMessages": true,
     "autoTriggerThreshold": 150,
     "scheduledTimes": ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00"],
-    "maxTokens": 3000,
+    "maxTokens": 15000,
     "summaryLength": "brief"
   },
   "ai": {

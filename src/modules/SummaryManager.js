@@ -61,13 +61,6 @@ class SummaryManager {
     try {
       const count = messageCount || config.get('summary.maxMessages');
 
-      // Vérifier si un résumé récent existe
-      const lastSummaryTime = this.recentSummaries.get(channel.id);
-      if (lastSummaryTime && Date.now() - lastSummaryTime < 300000) { // 5 minutes
-        logger.info(`Résumé ignoré pour #${channel.name} (trop récent)`);
-        return null;
-      }
-
       // Collecter les messages
       logger.info(`Collecte des messages pour #${channel.name}...`);
       const messages = await this.collectMessages(channel, count);
