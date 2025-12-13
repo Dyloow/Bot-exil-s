@@ -200,7 +200,7 @@ class SummaryManager {
             content: `Résume cette conversation du channel #${channelName}:\n\n${text}`
           }
         ],
-        max_tokens: maxTokens,
+        max_completion_tokens: maxTokens,
         temperature: temperature
       });
 
