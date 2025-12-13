@@ -188,7 +188,7 @@ class SummaryManager {
       const maxTokens = config.get('ai.maxTokensOutput');
       const temperature = config.get('ai.temperature');
 
-      const response = await this.openai.chat.completions.create({
+      const requestParams = {
         model: model,
         messages: [
           {
@@ -200,9 +200,15 @@ class SummaryManager {
             content: `Résume cette conversation du channel #${channelName}:\n\n${text}`
           }
         ],
-        max_completion_tokens: maxTokens,
-        temperature: temperature
-      });
+        max_completion_tokens: maxTokens
+      };
+
+      // gpt-5-nano ne supporte que temperature=1 (défaut)
+      if (!model.includes('gpt-5-nano')) {
+        requestParams.temperature = temperature;
+      }
+
+      const response = await this.openai.chat.completions.create(requestParams);
 
       return response.choices[0].message.content;
 
