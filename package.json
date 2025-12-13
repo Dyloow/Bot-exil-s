@@ -1,0 +1,24 @@
+{
+  "name": "discord-bot-guardian",
+  "version": "1.0.0",
+  "description": "Bot Discord avec résumés IA et protection anti-abus",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "echo \"Tests à implémenter\" && exit 0"
+  },
+  "keywords": ["discord", "bot", "ai", "moderation", "security"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "openai": "^4.20.1",
+    "dotenv": "^16.3.1",
+    "node-cron": "^3.0.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
