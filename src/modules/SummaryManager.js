@@ -227,10 +227,17 @@ class SummaryManager {
       ? this.guild.channels.cache.get(summaryChannelId) || channel
       : channel;
 
+    // Discord limite à 4096 caractères pour la description d'un embed
+    let truncatedSummary = summary;
+    if (summary.length > 4000) {
+      truncatedSummary = summary.substring(0, 3997) + '...';
+      logger.warn(`Résumé tronqué de ${summary.length} à 4000 caractères`);
+    }
+
     const embed = new EmbedBuilder()
       .setColor(0x3498db)
       .setTitle(`Résumé - #${channel.name}`)
-      .setDescription(summary);
+      .setDescription(truncatedSummary);
 
     try {
       await targetChannel.send({ embeds: [embed] });
