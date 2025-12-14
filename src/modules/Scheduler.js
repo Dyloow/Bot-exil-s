@@ -9,24 +9,7 @@ class Scheduler {
   constructor(client, guild) {
     this.client = client;
     this.guild = guild;
-    this.summaryManager = null;
-    this.moderationGuard = null;
-
     this.tasks = [];
-  }
-
-  /**
-   * Définit le SummaryManager
-   */
-  setSummaryManager(summaryManager) {
-    this.summaryManager = summaryManager;
-  }
-
-  /**
-   * Définit le ModerationGuard
-   */
-  setModerationGuard(moderationGuard) {
-    this.moderationGuard = moderationGuard;
   }
 
   /**
@@ -35,136 +18,10 @@ class Scheduler {
   start() {
     logger.info('📅 Démarrage du scheduler...');
 
-    // Résumés planifiés
-    this.scheduleAISummaries();
-
-    // Purge des logs
-    this.scheduleLogPurge();
-
-    // Reset des quotas de modération
-    this.scheduleQuotaReset();
-
-    // Nettoyage des validations expirées
-    this.scheduleValidationCleanup();
-
     // Kick des non-Exilés (23h42)
     this.scheduleNonExilesCleanup();
 
     logger.info(`${this.tasks.length} tâche(s) planifiée(s)`);
-  }
-
-  /**
-   * Planifie les résumés IA automatiques
-   */
-  scheduleAISummaries() {
-    if (!this.summaryManager || !config.get('summary.enabled')) {
-      logger.info('Résumés automatiques désactivés');
-      return;
-    }
-
-    const scheduledTimes = config.get('summary.scheduledTimes') || [];
-
-    for (const time of scheduledTimes) {
-      // Convertir le format "HH:mm" en cron
-      const [hour, minute] = time.split(':');
-      const cronExpression = `${minute} ${hour} * * *`;
-
-      const task = cron.schedule(cronExpression, async () => {
-        logger.info(`Exécution des résumés planifiés (${time})...`);
-        
-        try {
-          if (this.summaryManager) {
-            await this.summaryManager.generateScheduledSummaries();
-          }
-        } catch (error) {
-          logger.error('Erreur lors des résumés planifiés:', error);
-        }
-      });
-
-      this.tasks.push({
-        name: `Résumés IA (${time})`,
-        schedule: cronExpression,
-        task: task
-      });
-
-      logger.info(`  ✓ Résumés planifiés à ${time}`);
-    }
-  }
-
-  /**
-   * Planifie la purge des anciens logs
-   */
-  scheduleLogPurge() {
-    const retentionDays = config.get('logging.retentionDays') || 30;
-
-    // Purge tous les jours à 3h du matin
-    const task = cron.schedule('0 3 * * *', async () => {
-      logger.info('🧹 Purge des anciens logs...');
-      
-      try {
-        await logger.purgeOldLogs(retentionDays);
-      } catch (error) {
-        logger.error('Erreur lors de la purge des logs:', error);
-      }
-    });
-
-    this.tasks.push({
-      name: 'Purge des logs',
-      schedule: '0 3 * * *',
-      task: task
-    });
-
-    logger.info(`  ✓ Purge des logs planifiée (conservation: ${retentionDays} jours)`);
-  }
-
-  /**
-   * Planifie le reset des quotas de modération
-   */
-  scheduleQuotaReset() {
-    // Reset des quotas quotidiens à minuit
-    const task = cron.schedule('0 0 * * *', async () => {
-      logger.info('Reset des quotas de modération...');
-      
-      try {
-        if (this.moderationGuard) {
-          this.moderationGuard.resetQuotas();
-        }
-      } catch (error) {
-        logger.error('Erreur lors du reset des quotas:', error);
-      }
-    });
-
-    this.tasks.push({
-      name: 'Reset quotas',
-      schedule: '0 0 * * *',
-      task: task
-    });
-
-    logger.info('  ✓ Reset quotas planifié (minuit)');
-  }
-
-  /**
-   * Planifie le nettoyage des validations expirées
-   */
-  scheduleValidationCleanup() {
-    // Nettoyage toutes les 5 minutes
-    const task = cron.schedule('*/5 * * * *', async () => {
-      try {
-        if (this.moderationGuard && this.moderationGuard.validationSystem) {
-          this.moderationGuard.validationSystem.cleanupExpiredValidations();
-        }
-      } catch (error) {
-        logger.error('Erreur lors du nettoyage des validations:', error);
-      }
-    });
-
-    this.tasks.push({
-      name: 'Nettoyage validations',
-      schedule: '*/5 * * * *',
-      task: task
-    });
-
-    logger.info('  ✓ Nettoyage validations planifié (toutes les 5 min)');
   }
 
   /**
@@ -209,7 +66,12 @@ class Scheduler {
     }
 
     try {
-      await this.guild.members.fetch();
+      // Fetch les membres avec un try/catch pour éviter les rate limits
+      try {
+        await this.guild.members.fetch();
+      } catch (fetchError) {
+        logger.warn('Rate limit lors du fetch des membres, utilisation du cache');
+      }
       
       const members = this.guild.members.cache;
       let kickCount = 0;

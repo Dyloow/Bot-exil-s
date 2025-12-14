@@ -5,6 +5,7 @@ import logger from './utils/Logger.js';
 import ModerationGuard from './modules/ModerationGuard.js';
 import SummaryManager from './modules/SummaryManager.js';
 import Scheduler from './modules/Scheduler.js';
+import VoteSystem from './modules/VoteSystem.js';
 
 // Charger les variables d'environnement
 dotenv.config();
@@ -38,6 +39,7 @@ class DiscordBot {
     this.moderationGuard = null;
     this.summaryManager = null;
     this.scheduler = null;
+    this.voteSystem = null;
 
     // État du bot
     this.ready = false;
@@ -85,7 +87,7 @@ class DiscordBot {
    */
   setupEvents() {
     // Événement: Bot prêt
-    this.client.once('ready', () => this.onReady());
+    this.client.once('clientReady', () => this.onReady());
 
     // Événement: Erreur
     this.client.on('error', error => {
@@ -99,6 +101,9 @@ class DiscordBot {
 
     // Événement: Message
     this.client.on('messageCreate', message => this.onMessage(message));
+
+    // Événement: Interactions (boutons)
+    this.client.on('interactionCreate', interaction => this.onInteraction(interaction));
 
     // Événements de modération
     this.client.on('guildBanAdd', ban => this.onBanAdd(ban));
@@ -128,6 +133,14 @@ class DiscordBot {
     }
 
     logger.info(`Serveur: ${this.guild.name}`);
+
+    // Fetch les membres pour remplir le cache (évite les rate limits plus tard)
+    try {
+      await this.guild.members.fetch();
+      logger.info(`${this.guild.memberCount} membres en cache`);
+    } catch (error) {
+      logger.warn('Impossible de fetch tous les membres:', error.message);
+    }
 
     // Récupérer le channel de logs
     const logChannelId = config.get('server.logChannelId');
@@ -180,14 +193,12 @@ class DiscordBot {
 
       // Scheduler pour tâches automatiques
       this.scheduler = new Scheduler(this.client, this.guild);
-      
-      // Ajouter le summaryManager au scheduler si disponible
-      if (this.summaryManager) {
-        this.scheduler.setSummaryManager(this.summaryManager);
-      }
-      
       this.scheduler.start();
       logger.info('Scheduler initialisé');
+
+      // Système de vote pour attribution du rôle Exilé
+      this.voteSystem = new VoteSystem(this.client, this.guild);
+      logger.info('Module VoteSystem initialisé');
 
     } catch (error) {
       logger.error('Erreur lors de l\'initialisation des modules:', error);
@@ -204,6 +215,14 @@ class DiscordBot {
     // Ignorer les messages hors du serveur
     if (!message.guild || message.guild.id !== this.guild.id) return;
 
+    // Vérifier si le message contient @everyone
+    if (message.mentions.everyone && this.voteSystem) {
+      logger.info(`@everyone détecté de ${message.author.tag}`);
+      // Lancer un vote kick automatique
+      await this.voteSystem.startVoteKick(message.member, message.channel, message);
+      return; // Ne pas traiter d'autres commandes
+    }
+
     // Mettre en cache le message pour restauration éventuelle
     if (this.moderationGuard) {
       this.moderationGuard.cacheMessage(message);
@@ -217,6 +236,22 @@ class DiscordBot {
     // Vérifier le seuil automatique pour les résumés
     if (this.summaryManager) {
       await this.summaryManager.checkAutoTrigger(message.channel);
+    }
+  }
+
+  /**
+   * Gestion des interactions (boutons, menus, etc.)
+   */
+  async onInteraction(interaction) {
+    try {
+      if (interaction.isButton()) {
+        // Gérer les votes (admission et kick)
+        if (this.voteSystem && (interaction.customId.startsWith('vote_') || interaction.customId.startsWith('votekick_'))) {
+          await this.voteSystem.handleVote(interaction);
+        }
+      }
+    } catch (error) {
+      logger.error('Erreur lors de la gestion de l\'interaction:', error);
     }
   }
 
@@ -273,6 +308,30 @@ class DiscordBot {
           }
           break;
 
+        case 'vote':
+          if (!this.voteSystem) {
+            await message.reply('❌ Système de vote non disponible.');
+            return;
+          }
+
+          // Récupérer le membre mentionné
+          const mentionedMember = message.mentions.members.first();
+          
+          if (!mentionedMember) {
+            await message.reply('❌ Vous devez mentionner un membre. Exemple: `!vote @pseudo`');
+            return;
+          }
+
+          // Vérifier que ce n'est pas un bot
+          if (mentionedMember.user.bot) {
+            await message.reply('❌ Impossible de voter pour un bot.');
+            return;
+          }
+
+          // Lancer le vote
+          await this.voteSystem.startVote(message.member, mentionedMember, message.channel);
+          break;
+
         default:
           // Commande inconnue - ignorer silencieusement
           break;
@@ -294,6 +353,11 @@ class DiscordBot {
         {
           name: '!résumé [nombre]',
           value: 'Génère un résumé des derniers messages du channel (par défaut: 100)',
+          inline: false
+        },
+        {
+          name: '!vote @membre',
+          value: 'Lance un vote unanime pour attribuer le rôle Exilé à un membre',
           inline: false
         },
         {

@@ -65,10 +65,22 @@ class SummaryManager {
       logger.info(`Collecte des messages pour #${channel.name}...`);
       const messages = await this.collectMessages(channel, count);
 
+      logger.info(`${messages.length} messages collectés`);
 
+      if (messages.length === 0) {
+        logger.warn('Aucun message à résumer');
+        return null;
+      }
 
       // Pré-traiter les messages
       const processedText = this.preprocessMessages(messages);
+
+      logger.info(`Texte traité: ${processedText.length} caractères`);
+
+      if (!processedText || processedText.trim().length < 50) {
+        logger.warn('Texte traité trop court pour générer un résumé');
+        return null;
+      }
 
       // Limiter les tokens
       const truncatedText = this.truncateToTokenLimit(processedText);
@@ -103,34 +115,29 @@ class SummaryManager {
     const minLength = config.get('summary.minMessageLength');
 
     try {
-      // Récupérer les messages par batch
-      let lastId;
-      let fetched = 0;
+      // Fetch max 200 messages bruts pour éviter d'être trop lent
+      const maxFetch = Math.min(limit * 2, 200);
+      
+      logger.info(`Fetch de max ${maxFetch} messages bruts...`);
+      const fetchedMessages = await channel.messages.fetch({ limit: maxFetch });
+      
+      logger.info(`${fetchedMessages.size} messages récupérés, filtrage...`);
 
-      while (fetched < limit) {
-        const options = { limit: Math.min(100, limit - fetched) };
-        if (lastId) options.before = lastId;
+      // Filtrer et limiter
+      for (const [id, msg] of fetchedMessages) {
+        // Filtrer les messages
+        if (excludeBots && msg.author.bot) continue;
+        if (msg.content.length < minLength) continue;
+        if (msg.content.startsWith('!')) continue; // Ignorer les commandes
+        
+        messages.push({
+          author: msg.author.username,
+          content: msg.content,
+          timestamp: msg.createdAt
+        });
 
-        const batch = await channel.messages.fetch(options);
-        if (batch.size === 0) break;
-
-        for (const [id, msg] of batch) {
-          // Filtrer les messages
-          if (excludeBots && msg.author.bot) continue;
-          if (msg.content.length < minLength) continue;
-          if (msg.content.startsWith('!')) continue; // Ignorer les commandes
-          
-          messages.push({
-            author: msg.author.username,
-            content: msg.content,
-            timestamp: msg.createdAt
-          });
-
-          fetched++;
-          if (fetched >= limit) break;
-        }
-
-        lastId = batch.last().id;
+        // Arrêter si on a assez de messages
+        if (messages.length >= limit) break;
       }
 
       // Inverser pour avoir l'ordre chronologique
@@ -183,6 +190,8 @@ class SummaryManager {
    */
   async callAI(text, channelName) {
     try {
+      logger.info(`Appel à l'API OpenAI...`);
+      
       const systemPrompt = config.get('ai.systemPrompt');
       const model = config.get('ai.model');
       const maxTokens = config.get('ai.maxTokensOutput');
@@ -197,10 +206,10 @@ class SummaryManager {
           },
           {
             role: 'user',
-            content: `Résume cette conversation du channel #${channelName}:\n\n${text}`
+            content: `Voici les messages du channel Discord #${channelName} à résumer :\n\n${text}`
           }
         ],
-        max_completion_tokens: maxTokens
+        max_tokens: maxTokens
       };
 
       // gpt-5-nano ne supporte que temperature=1 (défaut)
@@ -208,8 +217,10 @@ class SummaryManager {
         requestParams.temperature = temperature;
       }
 
+      logger.info(`Envoi de la requête à OpenAI (model: ${model}, max_tokens: ${maxTokens})...`);
       const response = await this.openai.chat.completions.create(requestParams);
-
+      
+      logger.info(`Réponse reçue de OpenAI`);
       return response.choices[0].message.content;
 
     } catch (error) {
@@ -223,9 +234,15 @@ class SummaryManager {
    */
   async sendSummary(channel, summary, messageCount) {
     const summaryChannelId = config.get('server.summaryChannelId');
-    const targetChannel = summaryChannelId 
-      ? this.guild.channels.cache.get(summaryChannelId) || channel
-      : channel;
+    
+    // Vérifier que l'ID est valide (pas FROM_ENV ou REMPLACER)
+    let targetChannel = channel;
+    if (summaryChannelId && !summaryChannelId.includes('FROM_ENV') && !summaryChannelId.includes('REMPLACER')) {
+      const configuredChannel = this.guild.channels.cache.get(summaryChannelId);
+      if (configuredChannel) {
+        targetChannel = configuredChannel;
+      }
+    }
 
     // Discord limite à 4096 caractères pour la description d'un embed
     let truncatedSummary = summary;

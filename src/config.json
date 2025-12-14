@@ -1,23 +1,32 @@
 {
   "server": {
-    "guildId": "1448778662424871177",
-    "logChannelId": "REMPLACER_PAR_CHANNEL_LOGS_ID",
-    "summaryChannelId": "REMPLACER_PAR_CHANNEL_RÉSUMÉS_ID"
+    "guildId": "FROM_ENV",
+    "logChannelId": "FROM_ENV",
+    "summaryChannelId": "FROM_ENV"
   },
   "roles": {
-    "exilesRoleId": "1449453603399008316",
-    "protectedRoleId": "1449453603399008316",
+    "exilesRoleId": "FROM_ENV",
+    "protectedRoleId": "FROM_ENV",
     "moderatorRoles": [
-      "1449453603399008316"
+      "FROM_ENV"
     ],
     "adminRoles": [
-      "REMPLACER_PAR_ROLE_ADMIN_ID"
+      "FROM_ENV"
     ]
   },
   "cleanup": {
     "enabled": true,
     "kickNonExiles": true,
     "cronTime": "42 23 * * *"
+  },
+  "vote": {
+    "durationHours": 24,
+    "missingVotesCountAsYes": true
+  },
+  "voteKick": {
+    "durationMinutes": 5,
+    "missingVotesCountAsPardon": true,
+    "showVoters": true
   },
   "moderation": {
     "maxActionsPerHour": 5,
@@ -30,24 +39,19 @@
     "panicModeThreshold": 10
   },
   "summary": {
-    "enabled": true,
     "maxMessages": 100,
     "minMessageLength": 10,
     "excludeBotMessages": true,
-    "autoTriggerThreshold": 150,
-    "scheduledTimes": ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00"],
-    "maxTokens": 15000,
-    "summaryLength": "brief"
+    "autoTriggerThreshold": 0,
+    "maxTokens": 15000
   },
   "ai": {
     "model": "gpt-4o-mini",
     "maxTokensOutput": 500,
     "temperature": 0.3,
-    "systemPrompt": "Tu dois résumer cette conversation Discord comme si tu la racontais à un pote à l’oral : explique en quelques phrases ce qui s’est passé dans l’ensemble, dans quel ordre, pourquoi les gens parlaient de ça, ce qui a été testé ou décidé, avec un ton naturel et détendu, sans listes ni formalisme, en reliant les messages entre eux ; mets en **gras** (Markdown) les mots ou sujets clés importants au fil du texte, puis ajoute à la fin, sur une nouvelle ligne, un **TL;DR** encore plus concis en 1–2 phrases maximum.\n"
+    "systemPrompt": "Tu dois résumer cette conversation Discord comme si tu la racontais à un pote à l'oral : explique en quelques phrases ce qui s'est passé dans l'ensemble, dans quel ordre, pourquoi les gens parlaient de ça, ce qui a été testé ou décidé, avec un ton naturel et détendu, sans listes ni formalisme, en reliant les messages entre eux ; mets en **gras** (Markdown) les mots ou sujets clés importants au fil du texte, puis ajoute à la fin, sur une nouvelle ligne, un **TL;DR** encore plus concis en 1–2 phrases maximum.\n"
   },
   "logging": {
-    "retentionDays": 30,
-    "detailedLogs": true,
     "logToConsole": true,
     "logToFile": true
   },

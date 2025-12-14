@@ -1,6 +1,10 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
+
+// Charger les variables d'environnement en premier
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,7 +21,29 @@ class Config {
   loadConfig() {
     try {
       const configData = fs.readFileSync(this.configPath, 'utf8');
-      return JSON.parse(configData);
+      const config = JSON.parse(configData);
+      
+      // Remplacer les IDs par les valeurs du .env
+      if (process.env.GUILD_ID) {
+        config.server.guildId = process.env.GUILD_ID;
+      }
+      if (process.env.LOG_CHANNEL_ID && !process.env.LOG_CHANNEL_ID.includes('REMPLACER')) {
+        config.server.logChannelId = process.env.LOG_CHANNEL_ID;
+      }
+      if (process.env.SUMMARY_CHANNEL_ID && !process.env.SUMMARY_CHANNEL_ID.includes('REMPLACER')) {
+        config.server.summaryChannelId = process.env.SUMMARY_CHANNEL_ID;
+      }
+      if (process.env.EXILES_ROLE_ID) {
+        config.roles.exilesRoleId = process.env.EXILES_ROLE_ID;
+      }
+      if (process.env.PROTECTED_ROLE_ID) {
+        config.roles.protectedRoleId = process.env.PROTECTED_ROLE_ID;
+      }
+      if (process.env.EXILES_ROLE_ID) {
+        config.roles.moderatorRoles = [process.env.EXILES_ROLE_ID];
+      }
+      
+      return config;
     } catch (error) {
       console.error('Erreur lors du chargement de la configuration:', error.message);
       process.exit(1);
