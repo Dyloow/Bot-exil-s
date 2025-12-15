@@ -115,30 +115,49 @@ class SummaryManager {
     const minLength = config.get('summary.minMessageLength');
 
     try {
-      // Fetch max 200 messages bruts pour éviter d'être trop lent
-      const maxFetch = Math.min(limit * 2, 200);
+      // Discord API limite à 100 messages par requête
+      const maxFetch = Math.min(limit * 2, 500);
+      const batchSize = 100;
+      let lastMessageId = null;
+      let totalFetched = 0;
       
-      logger.info(`Fetch de max ${maxFetch} messages bruts...`);
-      const fetchedMessages = await channel.messages.fetch({ limit: maxFetch });
+      logger.info(`Fetch de max ${maxFetch} messages bruts en batches de ${batchSize}...`);
       
-      logger.info(`${fetchedMessages.size} messages récupérés, filtrage...`);
-
-      // Filtrer et limiter
-      for (const [id, msg] of fetchedMessages) {
-        // Filtrer les messages
-        if (excludeBots && msg.author.bot) continue;
-        if (msg.content.length < minLength) continue;
-        if (msg.content.startsWith('!')) continue; // Ignorer les commandes
+      // Fetch par batches de 100
+      while (totalFetched < maxFetch && messages.length < limit) {
+        const options = { limit: Math.min(batchSize, maxFetch - totalFetched) };
+        if (lastMessageId) {
+          options.before = lastMessageId;
+        }
         
-        messages.push({
-          author: msg.author.username,
-          content: msg.content,
-          timestamp: msg.createdAt
-        });
+        const fetchedMessages = await channel.messages.fetch(options);
+        
+        if (fetchedMessages.size === 0) break;
+        
+        totalFetched += fetchedMessages.size;
+        lastMessageId = fetchedMessages.last().id;
+        
+        // Filtrer et limiter
+        for (const [id, msg] of fetchedMessages) {
+          // Filtrer les messages
+          if (excludeBots && msg.author.bot) continue;
+          if (msg.content.length < minLength) continue;
+          if (msg.content.startsWith('!')) continue; // Ignorer les commandes
+          
+          messages.push({
+            author: msg.author.username,
+            content: msg.content,
+            timestamp: msg.createdAt
+          });
 
-        // Arrêter si on a assez de messages
+          // Arrêter si on a assez de messages
+          if (messages.length >= limit) break;
+        }
+        
         if (messages.length >= limit) break;
       }
+      
+      logger.info(`${totalFetched} messages récupérés, ${messages.length} messages après filtrage`);
 
       // Inverser pour avoir l'ordre chronologique
       return messages.reverse();
