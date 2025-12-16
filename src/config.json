@@ -19,6 +19,12 @@
     "kickNonExiles": true,
     "cronTime": "42 23 * * *"
   },
+  "salaryChecker": {
+    "enabled": true,
+    "dailyReminderTime": "09:00",
+    "referenceSalary": 45000,
+    "referenceUser": "Toto"
+  },
   "vote": {
     "durationHours": 24,
     "missingVotesCountAsYes": true

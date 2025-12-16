@@ -6,6 +6,7 @@ import ModerationGuard from './modules/ModerationGuard.js';
 import SummaryManager from './modules/SummaryManager.js';
 import Scheduler from './modules/Scheduler.js';
 import VoteSystem from './modules/VoteSystem.js';
+import SalaryChecker from './modules/SalaryChecker.js';
 
 // Charger les variables d'environnement
 dotenv.config();
@@ -40,6 +41,7 @@ class DiscordBot {
     this.summaryManager = null;
     this.scheduler = null;
     this.voteSystem = null;
+    this.salaryChecker = null;
 
     // État du bot
     this.ready = false;
@@ -200,6 +202,11 @@ class DiscordBot {
       this.voteSystem = new VoteSystem(this.client, this.guild);
       logger.info('Module VoteSystem initialisé');
 
+      // Système de comparaison de salaires
+      this.salaryChecker = new SalaryChecker(logger, config);
+      await this.salaryChecker.initialize(this.client);
+      logger.info('Module SalaryChecker initialisé');
+
     } catch (error) {
       logger.error('Erreur lors de l\'initialisation des modules:', error);
     }
@@ -316,7 +323,7 @@ class DiscordBot {
 
           // Récupérer le membre mentionné
           const mentionedMember = message.mentions.members.first();
-          
+
           if (!mentionedMember) {
             await message.reply('❌ Vous devez mentionner un membre. Exemple: `!vote @pseudo`');
             return;
@@ -330,6 +337,30 @@ class DiscordBot {
 
           // Lancer le vote
           await this.voteSystem.startVote(message.member, mentionedMember, message.channel);
+          break;
+
+        case 'check_hess':
+          if (this.salaryChecker) {
+            await this.salaryChecker.handleCheckHessCommand(message, args);
+          } else {
+            await message.reply('❌ Le système de comparaison de salaires n\'est pas disponible.');
+          }
+          break;
+
+        case 'add_salary':
+          if (this.salaryChecker) {
+            await this.salaryChecker.handleAddSalaryCommand(message, args);
+          } else {
+            await message.reply('❌ Le système de comparaison de salaires n\'est pas disponible.');
+          }
+          break;
+
+        case 'list_salaries':
+          if (this.salaryChecker) {
+            await this.salaryChecker.handleListSalariesCommand(message);
+          } else {
+            await message.reply('❌ Le système de comparaison de salaires n\'est pas disponible.');
+          }
           break;
 
         default:
@@ -358,6 +389,21 @@ class DiscordBot {
         {
           name: '!vote @membre',
           value: 'Lance un vote unanime pour attribuer le rôle Exilé à un membre',
+          inline: false
+        },
+        {
+          name: '!check_hess [pseudo]',
+          value: 'Vérifie combien d\'argent un membre aurait gagné avec le salaire de Toto',
+          inline: false
+        },
+        {
+          name: '!add_salary [montant]',
+          value: 'Définit votre propre salaire annuel',
+          inline: false
+        },
+        {
+          name: '!list_salaries',
+          value: 'Affiche la liste de tous les salaires enregistrés',
           inline: false
         },
         {
@@ -524,12 +570,18 @@ bot.start();
 // Gestion propre de l'arrêt
 process.on('SIGINT', () => {
   logger.info('🛑 Arrêt du bot...');
+  if (bot.salaryChecker) {
+    bot.salaryChecker.destroy();
+  }
   bot.client.destroy();
   process.exit(0);
 });
 
 process.on('SIGTERM', () => {
   logger.info('🛑 Arrêt du bot...');
+  if (bot.salaryChecker) {
+    bot.salaryChecker.destroy();
+  }
   bot.client.destroy();
   process.exit(0);
 });
