@@ -18,7 +18,8 @@ class SalaryChecker {
     this.client = null;
     this.cronTask = null;
     this.data = {
-      salaries: {}
+      salaries: {},
+      reminders: {}
     };
   }
 
@@ -37,14 +38,18 @@ class SalaryChecker {
         });
       } catch (error) {
         if (error.code === 'ENOENT') {
-          this.data.salaries = {
-            'zuma torney': 42000
-          };
+          this.data.salaries = {};
+          this.data.reminders = {};
           await this.saveData();
-          this.logger.info('Salary checker initialized with default data');
+          this.logger.info('Salary checker initialized with empty data');
         } else {
           throw error;
         }
+      }
+
+      // Ensure reminders object exists for backward compatibility
+      if (!this.data.reminders) {
+        this.data.reminders = {};
       }
 
       this.setupDailyReminder();
@@ -68,10 +73,6 @@ class SalaryChecker {
 
   async sendDailyReminder() {
     try {
-      if (!this.data.salaries['zuma torney']) {
-        return;
-      }
-
       const guildId = this.config.get('server.guildId');
       const guild = this.client.guilds.cache.get(guildId);
       if (!guild) {
@@ -79,64 +80,86 @@ class SalaryChecker {
         return;
       }
 
-      const targetUserId = '324180427516411905';
-      let targetMember;
+      // Loop through all users with reminders enabled
+      const reminderEntries = Object.entries(this.data.reminders);
 
-      try {
-        targetMember = await guild.members.fetch(targetUserId);
-      } catch (error) {
-        this.logger.warn('Target user not found in guild for daily reminder', { userId: targetUserId, error: error.message });
+      if (reminderEntries.length === 0) {
+        this.logger.info('No active reminders to send');
         return;
       }
 
-      if (!targetMember) {
-        this.logger.warn('Target member object is null');
-        return;
-      }
+      for (const [pseudo, reminderData] of reminderEntries) {
+        try {
+          // Check if user has a salary
+          if (!this.data.salaries[pseudo]) {
+            this.logger.warn('User has reminder but no salary', { pseudo });
+            continue;
+          }
 
-      const userSalary = this.data.salaries['zuma torney'];
-      const difference = this.calculateDifference(userSalary);
+          // Fetch the member
+          let targetMember;
+          try {
+            targetMember = await guild.members.fetch(reminderData.userId);
+          } catch (error) {
+            this.logger.warn('User not found in guild for reminder', { pseudo, userId: reminderData.userId, error: error.message });
+            continue;
+          }
 
-      const timeElapsed = `${difference.daysSinceStart}d ${difference.hours}h ${difference.minutes}m ${difference.seconds}s`;
-      const secondsPerYear = 365 * 24 * 60 * 60;
-      const perSecondDiff = difference.annualDifference / secondsPerYear;
+          if (!targetMember) {
+            this.logger.warn('Member object is null', { pseudo });
+            continue;
+          }
 
-      const embed = new EmbedBuilder()
-        .setColor(difference.totalDifference >= 0 ? '#00FF00' : '#FF0000')
-        .setTitle('💰 Daily Salary Reminder')
-        .setDescription(`Hey ${targetMember.user.username}! Here's your daily reminder of what you're missing out on...`)
-        .addFields(
-          { name: 'Your Salary', value: this.formatCurrency(userSalary) + '/year', inline: true },
-          { name: `${this.referenceUser}'s Salary`, value: this.formatCurrency(this.referenceSalary) + '/year', inline: true },
-          { name: 'Difference/Second', value: this.formatCurrency(perSecondDiff) + '/s', inline: true },
-          { name: '⏱️ Time Elapsed', value: timeElapsed, inline: true },
-          { name: '🔢 Total Seconds', value: difference.secondsSinceStart.toLocaleString('fr-FR'), inline: true },
-          { name: '💸 Total Lost', value: this.formatCurrency(Math.abs(difference.totalDifference)), inline: true }
-        )
-        .setFooter({ text: `Start date: ${new Date(this.startDate).toLocaleDateString('fr-FR')}` })
-        .setTimestamp();
+          // Calculate difference
+          const userSalary = this.data.salaries[pseudo];
+          const difference = this.calculateDifference(userSalary);
 
-      if (difference.totalDifference > 0) {
-        embed.addFields({
-          name: '📈 Reality Check',
-          value: `If you had joined ${this.referenceUser}'s firm on **${new Date(this.startDate).toLocaleDateString('fr-FR')}**, you would have earned **${this.formatCurrency(Math.abs(difference.totalDifference))} more** by now! 💰`
-        });
-      }
+          const timeElapsed = `${difference.daysSinceStart}d ${difference.hours}h ${difference.minutes}m ${difference.seconds}s`;
+          const secondsPerYear = 365 * 24 * 60 * 60;
+          const perSecondDiff = difference.annualDifference / secondsPerYear;
 
-      try {
-        await targetMember.send({ embeds: [embed] });
-        this.logger.info('Daily reminder sent', { userId: targetUserId, difference: difference.totalDifference });
-      } catch (dmError) {
-        this.logger.warn('Could not send DM, sending in guild channel', { userId: targetUserId, error: dmError.message });
+          const embed = new EmbedBuilder()
+            .setColor(difference.totalDifference >= 0 ? '#00FF00' : '#FF0000')
+            .setTitle('💰 Daily Salary Reminder')
+            .setDescription(`Hey ${targetMember.user.username}! Here's your daily reminder of what you're missing out on...`)
+            .addFields(
+              { name: 'Your Salary', value: this.formatCurrency(userSalary) + '/year', inline: true },
+              { name: `${this.referenceUser}'s Salary`, value: this.formatCurrency(this.referenceSalary) + '/year', inline: true },
+              { name: 'Difference/Second', value: this.formatCurrency(perSecondDiff) + '/s', inline: true },
+              { name: '⏱️ Time Elapsed', value: timeElapsed, inline: true },
+              { name: '🔢 Total Seconds', value: difference.secondsSinceStart.toLocaleString('fr-FR'), inline: true },
+              { name: '💸 Total Lost', value: this.formatCurrency(Math.abs(difference.totalDifference)), inline: true }
+            )
+            .setFooter({ text: `Start date: ${new Date(this.startDate).toLocaleDateString('fr-FR')}` })
+            .setTimestamp();
 
-        const channel = guild.channels.cache.find(ch => ch.name === 'general' || ch.type === 0);
-        if (channel) {
-          await channel.send({ content: `<@${targetMember.id}>`, embeds: [embed] });
+          if (difference.totalDifference > 0) {
+            embed.addFields({
+              name: '📈 Reality Check',
+              value: `If you had joined ${this.referenceUser}'s firm on **${new Date(this.startDate).toLocaleDateString('fr-FR')}**, you would have earned **${this.formatCurrency(Math.abs(difference.totalDifference))} more** by now! 💰`
+            });
+          }
+
+          // Try to send DM
+          try {
+            await targetMember.send({ embeds: [embed] });
+            this.logger.info('Daily reminder sent', { pseudo, userId: reminderData.userId, difference: difference.totalDifference });
+          } catch (dmError) {
+            this.logger.warn('Could not send DM, sending in guild channel', { pseudo, userId: reminderData.userId, error: dmError.message });
+
+            const channel = guild.channels.cache.find(ch => ch.name === 'general' || ch.type === 0);
+            if (channel) {
+              await channel.send({ content: `<@${targetMember.id}>`, embeds: [embed] });
+            }
+          }
+
+        } catch (error) {
+          this.logger.error('Error sending reminder to user', { pseudo, error: error.message });
         }
       }
 
     } catch (error) {
-      this.logger.error('Error sending daily reminder', { error: error.message });
+      this.logger.error('Error in sendDailyReminder', { error: error.message });
     }
   }
 
@@ -279,7 +302,8 @@ class SalaryChecker {
         .map(([pseudo, salary], index) => {
           const diff = salary - this.referenceSalary;
           const icon = diff > 0 ? '📈' : diff < 0 ? '📉' : '⚖️';
-          return `${index + 1}. **${pseudo}**: ${this.formatCurrency(salary)}/year ${icon}`;
+          const hasReminder = this.data.reminders[pseudo] ? '🔔' : '';
+          return `${index + 1}. **${pseudo}**: ${this.formatCurrency(salary)}/year ${icon} ${hasReminder}`;
         })
         .join('\n');
 
@@ -291,7 +315,7 @@ class SalaryChecker {
           name: `Reference Salary (${this.referenceUser})`,
           value: this.formatCurrency(this.referenceSalary) + '/year'
         })
-        .setFooter({ text: `Start date: ${new Date(this.startDate).toLocaleDateString('fr-FR')}` })
+        .setFooter({ text: `Start date: ${new Date(this.startDate).toLocaleDateString('fr-FR')} | 🔔 = Daily reminder active` })
         .setTimestamp();
 
       await message.reply({ embeds: [embed] });
@@ -299,6 +323,76 @@ class SalaryChecker {
     } catch (error) {
       this.logger.error('Error in handleListSalariesCommand', { error: error.message });
       await message.reply('An error occurred while listing salaries. Please try again.');
+    }
+  }
+
+  async handleRemindCommand(message, args) {
+    try {
+      if (args.length === 0) {
+        await message.reply('Usage: `!remind [pseudo]` or `!remind @user` - Enable daily salary reminder for a user');
+        return;
+      }
+
+      // Handle both @mentions and plain usernames
+      let pseudo;
+      let userId;
+      const mentionedUser = message.mentions.users.first();
+
+      if (mentionedUser) {
+        pseudo = mentionedUser.username.toLowerCase();
+        userId = mentionedUser.id;
+      } else {
+        pseudo = args[0].toLowerCase();
+
+        // Try to find the user by username in the guild
+        const guild = message.guild;
+        const members = await guild.members.fetch();
+        const foundMember = members.find(m => m.user.username.toLowerCase() === pseudo);
+
+        if (!foundMember) {
+          await message.reply(`❌ User **${pseudo}** not found in this server. Try mentioning them with @.`);
+          return;
+        }
+
+        userId = foundMember.user.id;
+      }
+
+      // Check if user has a salary set
+      if (!this.data.salaries[pseudo]) {
+        await message.reply(`❌ **${pseudo}** doesn't have a salary set yet. They need to use \`!add_salary [amount]\` first.`);
+        return;
+      }
+
+      // Check if reminder already exists
+      if (this.data.reminders[pseudo]) {
+        await message.reply(`❌ Daily reminder is already enabled for **${pseudo}**.`);
+        return;
+      }
+
+      // Add reminder
+      this.data.reminders[pseudo] = {
+        userId: userId,
+        enabledBy: message.author.id,
+        enabledAt: new Date().toISOString()
+      };
+      await this.saveData();
+
+      const embed = new EmbedBuilder()
+        .setColor('#00FF00')
+        .setTitle('🔔 Daily Reminder Enabled')
+        .setDescription(`Daily salary reminder has been enabled for **${pseudo}**`)
+        .addFields(
+          { name: 'Reminder Time', value: this.config.get('salaryChecker.dailyReminderTime') || '09:00', inline: true },
+          { name: 'User ID', value: userId, inline: true }
+        )
+        .setTimestamp();
+
+      await message.reply({ embeds: [embed] });
+      this.logger.info('Daily reminder enabled', { pseudo, userId, enabledBy: message.author.id });
+
+    } catch (error) {
+      this.logger.error('Error in handleRemindCommand', { error: error.message });
+      await message.reply('An error occurred while setting up the reminder. Please try again.');
     }
   }
 

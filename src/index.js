@@ -363,6 +363,14 @@ class DiscordBot {
           }
           break;
 
+        case 'remind':
+          if (this.salaryChecker) {
+            await this.salaryChecker.handleRemindCommand(message, args);
+          } else {
+            await message.reply('❌ Le système de comparaison de salaires n\'est pas disponible.');
+          }
+          break;
+
         default:
           // Commande inconnue - ignorer silencieusement
           break;
@@ -404,6 +412,11 @@ class DiscordBot {
         {
           name: '!list_salaries',
           value: 'Affiche la liste de tous les salaires enregistrés',
+          inline: false
+        },
+        {
+          name: '!remind [pseudo]',
+          value: 'Active le rappel quotidien de salaire pour un utilisateur',
           inline: false
         },
         {
