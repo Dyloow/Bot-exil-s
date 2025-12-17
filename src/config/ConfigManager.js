@@ -33,8 +33,17 @@ class Config {
       if (process.env.SUMMARY_CHANNEL_ID && !process.env.SUMMARY_CHANNEL_ID.includes('REMPLACER')) {
         config.server.summaryChannelId = process.env.SUMMARY_CHANNEL_ID;
       }
+      if (process.env.COMMANDS_CHANNEL_ID) {
+        config.server.commandsChannelId = process.env.COMMANDS_CHANNEL_ID;
+      }
       if (process.env.EXILES_ROLE_ID) {
         config.roles.exilesRoleId = process.env.EXILES_ROLE_ID;
+      }
+      if (process.env.CONDAMNE_ROLE_ID) {
+        config.roles.condamneRoleId = process.env.CONDAMNE_ROLE_ID;
+      }
+      if (process.env.RAPATRI_ROLE_ID) {
+        config.roles.rapatriRoleId = process.env.RAPATRI_ROLE_ID;
       }
       if (process.env.PROTECTED_ROLE_ID) {
         config.roles.protectedRoleId = process.env.PROTECTED_ROLE_ID;

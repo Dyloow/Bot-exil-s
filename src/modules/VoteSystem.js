@@ -20,6 +20,7 @@ class VoteSystem {
   async startVote(initiator, targetMember, channel) {
     // Vérifications préalables
     const exilesRoleId = config.get('roles.exilesRoleId');
+    const condamneRoleId = config.get('roles.condamneRoleId');
     
     // Vérifier que l'initiateur a le rôle Exilé
     if (!initiator.roles.cache.has(exilesRoleId)) {
@@ -27,9 +28,14 @@ class VoteSystem {
       return;
     }
 
-    // Vérifier que la cible n'a pas déjà le rôle
+    // Vérifier que la cible n'a pas déjà le rôle Exilé ou Condamné
     if (targetMember.roles.cache.has(exilesRoleId)) {
       await channel.send(`❌ ${targetMember.user.tag} a déjà le rôle Exilé.`);
+      return;
+    }
+
+    if (targetMember.roles.cache.has(condamneRoleId)) {
+      await channel.send(`❌ ${targetMember.user.tag} est déjà condamné à l'exil (vote en cours).`);
       return;
     }
 
@@ -52,6 +58,16 @@ class VoteSystem {
       return;
     }
 
+    // Attribuer le rôle "Condamné à l'Exil" temporairement
+    try {
+      await targetMember.roles.add(condamneRoleId);
+      logger.info(`Rôle "Condamné à l'Exil" attribué à ${targetMember.user.tag}`);
+    } catch (error) {
+      logger.error('Erreur lors de l\'attribution du rôle Condamné:', error);
+      await channel.send(`❌ Erreur lors de l'attribution du rôle temporaire.`);
+      return;
+    }
+
     // Créer l'ID du vote
     const voteId = `vote_${Date.now()}_${targetMember.id}`;
 
@@ -64,11 +80,13 @@ class VoteSystem {
       .setDescription(
         `**Candidat :** ${targetMember}\n\n` +
         `Un vote est lancé pour décider si cette personne peut **rejoindre définitivement** La Table des Exilés à **effet permanent**.\n\n` +
+        `⚠️ **Le candidat a reçu le rôle "Condamné à l'Exil" pendant ${durationHours}h**\n\n` +
         `**Règles :**\n` +
         `• Vote anonyme\n` +
         `• Tous les Exilés doivent voter dans les ${durationHours}h\n` +
         `• Le vote doit être unanime (un seul "Non" = refus)\n` +
-        `• Les votes manquants après ${durationHours}h comptent comme "Oui"\n\n` +
+        `• Les votes manquants après ${durationHours}h comptent comme "Oui"\n` +
+        `• Si refusé : le rôle Condamné sera retiré\n\n` +
         `**Votes : 0/${exiledMembers.size}**`
       )
       .setColor('#FFA500')
@@ -124,9 +142,12 @@ class VoteSystem {
   async handleVote(interaction) {
     const customId = interaction.customId;
     
-    // Parser l'ID du vote (vote_... ou votekick_...)
-    const match = customId.match(/^(vote(?:kick)?_\d+_\d+)_(yes|no)$/);
-    if (!match) return;
+    // Parser l'ID du vote (vote_... ou votekick_everyone_... ou votekick_manual_...)
+    const match = customId.match(/^(vote(?:kick_(?:everyone|manual))?_\d+_\d+)_(yes|no)$/);
+    if (!match) {
+      logger.warn(`ID de vote non reconnu: ${customId}`);
+      return;
+    }
 
     const [, voteId, voteChoice] = match;
 
@@ -143,6 +164,17 @@ class VoteSystem {
 
     // Vérifier que le votant a le rôle Exilé
     const exilesRoleId = config.get('roles.exilesRoleId');
+    const rapatriRoleId = config.get('roles.rapatriRoleId');
+    
+    // Bloquer les Rapatriés de voter
+    if (rapatriRoleId && interaction.member.roles.cache.has(rapatriRoleId)) {
+      await interaction.reply({
+        content: '❌ Les Rapatriés ne peuvent pas voter.',
+        ephemeral: true
+      });
+      return;
+    }
+    
     if (!interaction.member.roles.cache.has(exilesRoleId)) {
       await interaction.reply({
         content: '❌ Seuls les Exilés peuvent voter.',
@@ -195,41 +227,73 @@ class VoteSystem {
     let voteEmbed;
     
     if (voteData.type === 'kick') {
-      // Vote kick - PUBLIC avec noms des votants
-      const durationMinutes = config.get('voteKick.durationMinutes') || 5;
+      // Vote kick - Différencier entre everyone et manual
+      const isManual = voteData.subtype === 'manual';
       
-      // Séparer les votes
-      const kickVoters = [];
-      const pardonVoters = [];
+      // Lister les votants publiquement (non anonyme)
+      let kickVoters = [];
+      let pardonVoters = [];
       
       for (const [userId, vote] of voteData.votes) {
-        const member = voteData.exiledMembers.get(userId);
-        if (member) {
-          if (vote === 'yes') {
-            kickVoters.push(member.user.tag);
-          } else {
-            pardonVoters.push(member.user.tag);
-          }
+        const member = this.guild.members.cache.get(userId);
+        const username = member ? member.user.username : 'Inconnu';
+        
+        if (vote === 'yes') {
+          kickVoters.push(username);
+        } else {
+          pardonVoters.push(username);
         }
       }
       
-      voteEmbed = new EmbedBuilder()
-        .setTitle('⚠️ Vote Kick - Abus de @everyone')
-        .setDescription(
-          `**Coupable :** ${voteData.targetMember}\n\n` +
-          `${voteData.targetMember.user.tag} a utilisé @everyone.\n\n` +
-          `Un vote est lancé pour décider de son exclusion des Exilés.\n\n` +
-          `**Règles :**\n` +
-          `• Vote PUBLIC (non anonyme)\n` +
-          `• Majorité absolue (>50%) requise pour kick\n` +
-          `• Les votes manquants après ${durationMinutes} minutes comptent comme "Pardon"\n` +
-          `• Si kick : retrait du rôle Exilés + expulsion du serveur\n\n` +
-          `**Votes : ${voteData.votes.size}/${voteData.totalVoters}**\n\n` +
-          `**👍 Kick (${kickVoters.length}) :** ${kickVoters.length > 0 ? kickVoters.join(', ') : 'Aucun'}\n` +
-          `**🙏 Pardon (${pardonVoters.length}) :** ${pardonVoters.length > 0 ? pardonVoters.join(', ') : 'Aucun'}`
-        )
-        .setColor('#FF0000')
-        .setTimestamp();
+      const kickCount = kickVoters.length;
+      const pardonCount = pardonVoters.length;
+      
+      // Formater les listes de votants
+      const kickList = kickVoters.length > 0 ? kickVoters.join(', ') : '_Aucun_';
+      const pardonList = pardonVoters.length > 0 ? pardonVoters.join(', ') : '_Aucun_';
+      
+      if (isManual) {
+        const durationMinutes = config.get('voteKick.durationMinutes') || 10;
+        const rapatriDurationHours = config.get('voteKick.rapatriDurationHours') || 24;
+        
+        voteEmbed = new EmbedBuilder()
+          .setTitle('⚖️ Vote Kick Manuel')
+          .setDescription(
+            `**Cible :** ${voteData.targetMember}\n\n` +
+            `Un vote est lancé pour punir temporairement ce membre.\n\n` +
+            `**Règles :**\n` +
+            `• Vote PUBLIC (non anonyme)\n` +
+            `• Majorité simple (>50% des votes exprimés) requise\n` +
+            `• Les votes manquants après ${durationMinutes} minutes NE COMPTENT PAS\n` +
+            `• Si oui : retrait du rôle Éxilés + ajout du rôle Rapatrié (lecture seule) pendant ${rapatriDurationHours}h\n` +
+            `• Après ${rapatriDurationHours}h : le rôle Rapatrié est retiré automatiquement et le rôle Éxilés est rendu\n\n` +
+            `**Votes : ${voteData.votes.size}/${voteData.totalVoters}**\n\n` +
+            `**👍 Oui (${kickCount}) :** ${kickList}\n` +
+            `**👎 Non (${pardonCount}) :** ${pardonList}`
+          )
+          .setColor('#FFA500')
+          .setTimestamp();
+      } else {
+        const durationHours = config.get('voteKickEveryone.durationHours') || 24;
+        
+        voteEmbed = new EmbedBuilder()
+          .setTitle('🚨 Vote Kick - Abus de @everyone')
+          .setDescription(
+            `**Coupable :** ${voteData.targetMember}\n\n` +
+            `${voteData.targetMember.user.tag} a utilisé @everyone.\n\n` +
+            `Un vote est lancé pour décider de son EXCLUSION DÉFINITIVE du serveur.\n\n` +
+            `**Règles :**\n` +
+            `• Vote PUBLIC (non anonyme)\n` +
+            `• Majorité ABSOLUE (>50% de TOUS les Éxilés) requise pour kick\n` +
+            `• Les votes manquants après ${durationHours}h comptent comme "Pardon"\n` +
+            `• Si kick : EXPULSION du serveur Discord (pas de retour)\n\n` +
+            `**Votes : ${voteData.votes.size}/${voteData.totalVoters}**\n\n` +
+            `**👍 Kick (${kickCount}) :** ${kickList}\n` +
+            `**🙏 Pardon (${pardonCount}) :** ${pardonList}`
+          )
+          .setColor('#FF0000')
+          .setTimestamp();
+      }
     } else {
       // Vote admission - ANONYME
       const durationHours = config.get('vote.durationHours') || 24;
@@ -242,8 +306,8 @@ class VoteSystem {
           `**Règles :**\n` +
           `• Vote anonyme\n` +
           `• Tous les Exilés doivent voter dans les ${durationHours}h\n` +
-          `• Le vote doit être unanime (un seul "Non" = refus)\n` +
-          `• Les votes manquants après ${durationHours}h comptent comme "Oui"\n\n` +
+          `• La majorité l'emporte (>50%)\n` +
+          `• Les votes manquants ne comptent PAS\n\n` +
           `**Votes : ${voteData.votes.size}/${voteData.totalVoters}**`
         )
         .setColor('#FFA500')
@@ -273,8 +337,9 @@ class VoteSystem {
       else if (vote === 'no') noCount++;
     }
 
-    // Vérifier l'unanimité (aucun "non")
-    const isUnanimous = noCount === 0;
+    // Vérifier la majorité (>50%)
+    const totalVotes = yesCount + noCount;
+    const hasMajority = totalVotes > 0 && yesCount > (totalVotes / 2);
 
     // Désactiver les boutons
     const disabledRow = new ActionRowBuilder()
@@ -291,21 +356,27 @@ class VoteSystem {
           .setDisabled(true)
       );
 
-    if (isUnanimous) {
-      // Vote unanime : attribuer le rôle
+    if (hasMajority) {
+      // Majorité : attribuer le rôle Exilé et retirer Condamné
       const exilesRoleId = config.get('roles.exilesRoleId');
+      const condamneRoleId = config.get('roles.condamneRoleId');
       
       try {
+        // Retirer le rôle Condamné
+        await voteData.targetMember.roles.remove(condamneRoleId);
+        
+        // Ajouter le rôle Exilé
         await voteData.targetMember.roles.add(exilesRoleId);
 
         const successEmbed = new EmbedBuilder()
           .setTitle('✅ Vote réussi')
           .setDescription(
             `**Candidat :** ${voteData.targetMember.user.tag}\n\n` +
-            `Le vote est unanime ! ${voteData.targetMember.user.tag} rejoint les Exilés.\n\n` +
+            `La majorité a voté oui ! ${voteData.targetMember.user.tag} rejoint les Exilés.\n\n` +
             `**Résultats :**\n` +
             `✅ Oui : ${yesCount}\n` +
-            `❌ Non : ${noCount}\n\n` +
+            `❌ Non : ${noCount}\n` +
+            `Abstentions : ${voteData.totalVoters - totalVotes}\n\n` +
             `Bienvenue parmi les Exilés ! 🎉`
           )
           .setColor('#00FF00')
@@ -320,10 +391,10 @@ class VoteSystem {
           `🎉 ${voteData.targetMember} a été accepté(e) parmi les Exilés !`
         );
 
-        logger.security('Vote unanime réussi', {
+        logger.security('Vote majorité réussi', {
           target: voteData.targetMember.user.tag,
           initiator: voteData.initiator.user.tag,
-          votes: `${yesCount}/${voteData.totalVoters}`
+          votes: `${yesCount}/${totalVotes}`
         }, 'low');
 
       } catch (error) {
@@ -334,16 +405,27 @@ class VoteSystem {
       }
 
     } else {
-      // Vote non unanime : refus
+      // Pas de majorité : refus - RETIRER le rôle Condamné
+      const condamneRoleId = config.get('roles.condamneRoleId');
+      
+      try {
+        await voteData.targetMember.roles.remove(condamneRoleId);
+        logger.info(`Rôle Condamné retiré de ${voteData.targetMember.user.tag} (vote refusé)`);
+      } catch (error) {
+        logger.error('Erreur lors du retrait du rôle Condamné:', error);
+      }
+      
       const failEmbed = new EmbedBuilder()
         .setTitle('❌ Vote échoué')
         .setDescription(
           `**Candidat :** ${voteData.targetMember.user.tag}\n\n` +
-          `Le vote n'est pas unanime. ${voteData.targetMember.user.tag} ne peut pas rejoindre les Exilés.\n\n` +
+          `La majorité n'a pas voté oui. ${voteData.targetMember.user.tag} ne peut pas rejoindre les Exilés.\n\n` +
           `**Résultats :**\n` +
           `✅ Oui : ${yesCount}\n` +
-          `❌ Non : ${noCount}\n\n` +
-          `Le vote doit être unanime pour accepter un nouveau membre.`
+          `❌ Non : ${noCount}\n` +
+          `Abstentions : ${voteData.totalVoters - totalVotes}\n\n` +
+          `La majorité (>50%) est requise pour accepter un nouveau membre.\n` +
+          `Le rôle "Condamné à l'Exil" a été retiré.`
         )
         .setColor('#FF0000')
         .setTimestamp();
@@ -353,7 +435,7 @@ class VoteSystem {
         components: [disabledRow]
       });
 
-      logger.info(`Vote échoué pour ${voteData.targetMember.user.tag} (${noCount} non)`);
+      logger.info(`Vote échoué pour ${voteData.targetMember.user.tag} (${yesCount}/${totalVotes})`);
     }
 
     // Supprimer le vote actif
@@ -416,10 +498,15 @@ class VoteSystem {
     }
 
     if (isUnanimous) {
-      // Vote unanime : attribuer le rôle
+      // Vote unanime : attribuer le rôle Exilé et retirer Condamné
       const exilesRoleId = config.get('roles.exilesRoleId');
+      const condamneRoleId = config.get('roles.condamneRoleId');
       
       try {
+        // Retirer le rôle Condamné
+        await voteData.targetMember.roles.remove(condamneRoleId);
+        
+        // Ajouter le rôle Exilé
         await voteData.targetMember.roles.add(exilesRoleId);
 
         const successEmbed = new EmbedBuilder()
@@ -452,13 +539,23 @@ class VoteSystem {
       }
 
     } else {
-      // Vote non unanime : refus
+      // Vote non unanime : refus - RETIRER le rôle Condamné
+      const condamneRoleId = config.get('roles.condamneRoleId');
+      
+      try {
+        await voteData.targetMember.roles.remove(condamneRoleId);
+        logger.info(`Rôle Condamné retiré de ${voteData.targetMember.user.tag} (vote refusé après timeout)`);
+      } catch (error) {
+        logger.error('Erreur lors du retrait du rôle Condamné:', error);
+      }
+      
       const failEmbed = new EmbedBuilder()
         .setTitle('❌ Vote échoué')
         .setDescription(
           `**Candidat :** ${voteData.targetMember.user.tag}\n\n` +
           `Le vote n'est pas unanime. ${voteData.targetMember.user.tag} ne peut pas rejoindre les Exilés.\n\n` +
-          `Le vote doit être unanime pour accepter un nouveau membre.`
+          `Le vote doit être unanime pour accepter un nouveau membre.\n` +
+          `Le rôle "Condamné à l'Exil" a été retiré.`
         )
         .setColor('#FF0000')
         .setTimestamp();
@@ -530,9 +627,10 @@ class VoteSystem {
   }
 
   /**
-   * Démarre un vote kick pour punir un @everyone
+   * Démarre un vote kick automatique pour punir un abus de @everyone
+   * Ce vote retire DÉFINITIVEMENT le rôle Exilés (pas de durée limitée)
    */
-  async startVoteKick(culprit, channel, message) {
+  async startVoteKickEveryone(culprit, channel, message) {
     const exilesRoleId = config.get('roles.exilesRoleId');
 
     // Vérifier que le coupable a le rôle Exilé
@@ -558,26 +656,26 @@ class VoteSystem {
     }
 
     // Créer l'ID du vote
-    const voteId = `votekick_${Date.now()}_${culprit.id}`;
+    const voteId = `votekick_everyone_${Date.now()}_${culprit.id}`;
 
-    // Récupérer la durée du vote kick depuis la config (en minutes)
-    const durationMinutes = config.get('voteKick.durationMinutes') || 5;
+    // Récupérer la durée du vote kick depuis la config (en heures pour @everyone)
+    const durationHours = config.get('voteKickEveryone.durationHours') || 24;
 
     // Créer l'embed du vote kick
     const voteEmbed = new EmbedBuilder()
-      .setTitle('⚠️ Vote Kick - Abus de @everyone')
+      .setTitle('🚨 Vote Kick - Abus de @everyone')
       .setDescription(
         `**Coupable :** ${culprit}\n\n` +
         `${culprit.user.tag} a utilisé @everyone.\n\n` +
-        `Un vote est lancé pour décider de son exclusion des Exilés.\n\n` +
+        `Un vote est lancé pour décider de son EXCLUSION DÉFINITIVE du serveur.\n\n` +
         `**Règles :**\n` +
         `• Vote PUBLIC (non anonyme)\n` +
-        `• Majorité absolue (>50%) requise pour kick\n` +
-        `• Les votes manquants après ${durationMinutes} minutes comptent comme "Pardon"\n` +
-        `• Si kick : retrait du rôle Exilés + expulsion du serveur\n\n` +
+        `• Majorité ABSOLUE (>50% de TOUS les Éxilés) requise pour kick\n` +
+        `• Les votes manquants après ${durationHours}h comptent comme "Pardon"\n` +
+        `• Si kick : EXPULSION du serveur Discord (pas de retour)\n\n` +
         `**Votes : 0/${exiledMembers.size}**\n\n` +
-        `**👍 Kick (0) :** \n` +
-        `**🙏 Pardon (0) :** `
+        `**👍 Kick (0) :** _Aucun_\n` +
+        `**🙏 Pardon (0) :** _Aucun_`
       )
       .setColor('#FF0000')
       .setTimestamp();
@@ -606,6 +704,7 @@ class VoteSystem {
     this.activeVotes.set(voteId, {
       voteId: voteId,
       type: 'kick',
+      subtype: 'everyone', // Indique que c'est un vote pour @everyone (définitif)
       targetMember: culprit,
       message: voteMessage,
       channel: channel,
@@ -616,9 +715,125 @@ class VoteSystem {
       startTime: Date.now()
     });
 
-    logger.info(`Vote kick lancé pour ${culprit.user.tag} (abus @everyone)`);
+    logger.info(`Vote kick automatique lancé pour ${culprit.user.tag} (abus @everyone)`);
 
-    // Timeout configurable (en minutes pour le vote kick)
+    // Timeout configurable (en heures pour le vote kick @everyone)
+    const durationMs = durationHours * 60 * 60 * 1000;
+    setTimeout(() => {
+      if (this.activeVotes.has(voteId)) {
+        this.concludeVoteKickWithTimeout(voteId);
+      }
+    }, durationMs);
+  }
+
+  /**
+   * Démarre un vote kick manuel via la commande !vote-kick
+   * Ce vote donne le rôle Rapatrié pendant 24h (temporaire)
+   */
+  async startVoteKickManual(initiator, targetMember, channel) {
+    const exilesRoleId = config.get('roles.exilesRoleId');
+    const rapatriRoleId = config.get('roles.rapatriRoleId');
+
+    // Vérifier que l'initiateur a le rôle Exilé
+    if (!initiator.roles.cache.has(exilesRoleId)) {
+      await channel.send(`❌ Seuls les Exilés peuvent lancer un vote-kick.`);
+      return;
+    }
+
+    // Vérifier que la cible a le rôle Exilé
+    if (!targetMember.roles.cache.has(exilesRoleId)) {
+      await channel.send(`❌ ${targetMember.user.tag} n'est pas un Exilé.`);
+      return;
+    }
+
+    // Vérifier que la cible n'a pas déjà le rôle Rapatrié
+    if (targetMember.roles.cache.has(rapatriRoleId)) {
+      await channel.send(`❌ ${targetMember.user.tag} a déjà le rôle Rapatrié.`);
+      return;
+    }
+
+    // Vérifier qu'il n'y a pas déjà un vote kick en cours pour ce membre
+    for (const [voteId, voteData] of this.activeVotes.entries()) {
+      if (voteData.type === 'kick' && voteData.targetMember.id === targetMember.id) {
+        await channel.send(`❌ Un vote kick est déjà en cours pour ${targetMember.user.tag}.`);
+        return;
+      }
+    }
+
+    // Récupérer tous les membres avec le rôle Exilé (sauf bots et sauf la cible)
+    const exiledMembers = this.guild.members.cache.filter(
+      member => member.roles.cache.has(exilesRoleId) && !member.user.bot && member.id !== targetMember.id
+    );
+
+    if (exiledMembers.size === 0) {
+      await channel.send(`❌ Aucun Exilé disponible pour voter.`);
+      return;
+    }
+
+    // Créer l'ID du vote
+    const voteId = `votekick_manual_${Date.now()}_${targetMember.id}`;
+
+    // Récupérer la durée du vote kick depuis la config (en minutes)
+    const durationMinutes = config.get('voteKick.durationMinutes') || 5;
+    const rapatriDurationHours = config.get('voteKick.rapatriDurationHours') || 24;
+
+    // Créer l'embed du vote kick manuel
+    const voteEmbed = new EmbedBuilder()
+      .setTitle('⚖️ Vote Kick Manuel')
+      .setDescription(
+        `**Cible :** ${targetMember}\n\n` +
+        `Un vote est lancé pour punir temporairement ce membre.\n\n` +
+        `**Règles :**\n` +
+        `• Vote PUBLIC (non anonyme)\n` +
+        `• Majorité absolue (>50%) requise\n` +
+        `• Les votes manquants après ${durationMinutes} minutes comptent comme "Non"\n` +
+        `• Si oui : retrait du rôle Exilés + ajout du rôle Rapatrié (lecture seule) pendant ${rapatriDurationHours}h\n` +
+        `• Après ${rapatriDurationHours}h : le rôle Rapatrié est retiré automatiquement et le rôle Exilés est rendu\n\n` +
+        `**Votes : 0/${exiledMembers.size}**\n\n` +
+        `**👍 Oui (0) :** \n` +
+        `**👎 Non (0) :** `
+      )
+      .setColor('#FFA500')
+      .setTimestamp();
+
+    // Créer les boutons
+    const row = new ActionRowBuilder()
+      .addComponents(
+        new ButtonBuilder()
+          .setCustomId(`${voteId}_yes`)
+          .setLabel('👍 Oui')
+          .setStyle(ButtonStyle.Danger),
+        new ButtonBuilder()
+          .setCustomId(`${voteId}_no`)
+          .setLabel('👎 Non')
+          .setStyle(ButtonStyle.Success)
+      );
+
+    // Envoyer le message de vote kick avec ping du rôle
+    const voteMessage = await channel.send({
+      content: `<@&${exilesRoleId}> 🔔 Vote kick manuel lancé par ${initiator.user.tag}`,
+      embeds: [voteEmbed],
+      components: [row]
+    });
+
+    // Stocker les données du vote kick manuel
+    this.activeVotes.set(voteId, {
+      voteId: voteId,
+      type: 'kick',
+      subtype: 'manual', // Indique que c'est un vote manuel (temporaire)
+      initiator: initiator,
+      targetMember: targetMember,
+      message: voteMessage,
+      channel: channel,
+      exiledMembers: exiledMembers,
+      votes: new Map(),
+      totalVoters: exiledMembers.size,
+      startTime: Date.now()
+    });
+
+    logger.info(`Vote kick manuel lancé par ${initiator.user.tag} pour ${targetMember.user.tag}`);
+
+    // Timeout configurable
     const durationMs = durationMinutes * 60 * 1000;
     setTimeout(() => {
       if (this.activeVotes.has(voteId)) {
@@ -643,26 +858,33 @@ class VoteSystem {
       else if (vote === 'no') pardonCount++;
     }
 
-    // Les votes manquants comptent comme "non" (pardon)
-    const missingCount = voteData.totalVoters - voteData.votes.size;
-    pardonCount += missingCount;
-
-    // Vérifier la majorité absolue (>50%)
     const totalVotes = kickCount + pardonCount;
-    const hasAbsoluteMajority = kickCount > (totalVotes / 2);
+    const isManual = voteData.subtype === 'manual';
+    
+    // Calcul de la majorité selon le type de vote
+    let hasMajority;
+    if (isManual) {
+      // Vote manuel : majorité simple (> 50% des votes exprimés)
+      // Les votes manquants NE comptent PAS
+      hasMajority = totalVotes > 0 && kickCount > (totalVotes / 2);
+    } else {
+      // Vote @everyone : majorité absolue (> 50% de TOUS les Éxilés)
+      // Les votes manquants comptent comme Pardon
+      hasMajority = kickCount > (voteData.totalVoters / 2);
+    }
 
     // Désactiver les boutons du message de vote
     const disabledRow = new ActionRowBuilder()
       .addComponents(
         new ButtonBuilder()
           .setCustomId(`${voteId}_yes`)
-          .setLabel('✅ Kick')
+          .setLabel(isManual ? '👍 Oui' : '✅ Kick')
           .setStyle(ButtonStyle.Danger)
           .setDisabled(true),
         new ButtonBuilder()
           .setCustomId(`${voteId}_no`)
-          .setLabel('❌ Pardonner')
-          .setStyle(ButtonStyle.Secondary)
+          .setLabel(isManual ? '👎 Non' : '❌ Pardonner')
+          .setStyle(isManual ? ButtonStyle.Success : ButtonStyle.Secondary)
           .setDisabled(true)
       );
 
@@ -674,52 +896,127 @@ class VoteSystem {
       logger.error('Erreur lors de la désactivation des boutons:', error);
     }
 
-    if (hasAbsoluteMajority) {
-      // Majorité pour kick : retirer le rôle et kick
+    if (hasMajority) {
       const exilesRoleId = config.get('roles.exilesRoleId');
       
-      try {
-        // Retirer le rôle Exilés
-        await voteData.targetMember.roles.remove(exilesRoleId);
+      if (isManual) {
+        // Vote manuel : retrait temporaire avec rôle Rapatrié pendant 24h
+        const rapatriRoleId = config.get('roles.rapatriRoleId');
+        const rapatriDurationHours = config.get('voteKick.rapatriDurationHours') || 24;
         
-        // Kick du serveur
-        await voteData.targetMember.kick('Vote kick : Abus de @everyone - Majorité absolue atteinte');
+        try {
+          // Retirer le rôle Exilés
+          await voteData.targetMember.roles.remove(exilesRoleId);
+          
+          // Ajouter le rôle Rapatrié (lecture seule) temporairement
+          await voteData.targetMember.roles.add(rapatriRoleId);
 
-        const kickEmbed = new EmbedBuilder()
-          .setTitle('🚨 Vote Kick - Expulsion')
-          .setDescription(
-            `**Coupable :** ${voteData.targetMember.user.tag}\n\n` +
-            `La majorité absolue a voté pour l'expulsion.\n\n` +
-            `${voteData.targetMember.user.tag} a été retiré des Exilés et expulsé du serveur.`
-          )
-          .setColor('#FF0000')
-          .setTimestamp();
+          const kickEmbed = new EmbedBuilder()
+            .setTitle('⚖️ Vote Kick Manuel - Sanction Temporaire')
+            .setDescription(
+              `**Cible :** ${voteData.targetMember.user.tag}\n\n` +
+              `La majorité simple a voté pour la sanction temporaire.\n\n` +
+              `${voteData.targetMember.user.tag} a été retiré des Exilés et a reçu le rôle "Rapatrié" pendant ${rapatriDurationHours}h.\n` +
+              `**Après ${rapatriDurationHours}h, il retrouvera automatiquement son rôle Exilés.**\n\n` +
+              `**Résultat final :**\n` +
+              `✅ Oui : ${kickCount}\n` +
+              `❌ Non : ${pardonCount}\n` +
+              `🔇 Abstentions : ${voteData.totalVoters - totalVotes}`
+            )
+            .setColor('#FFA500')
+            .setTimestamp();
 
-        await voteData.channel.send({
-          embeds: [kickEmbed]
-        });
+          await voteData.channel.send({ embeds: [kickEmbed] });
 
-        logger.security('Vote kick réussi', {
-          target: voteData.targetMember.user.tag,
-          reason: 'Abus @everyone',
-          votes: `${kickCount}/${totalVotes}`
-        }, 'high');
+          // Programmer le retour automatique après 24h
+          const rapatriDurationMs = rapatriDurationHours * 60 * 60 * 1000;
+          setTimeout(async () => {
+            try {
+              // Vérifier que le membre a toujours le rôle Rapatrié
+              const currentMember = await this.guild.members.fetch(voteData.targetMember.id);
+              if (currentMember.roles.cache.has(rapatriRoleId)) {
+                // Retirer le rôle Rapatrié et rendre le rôle Exilés
+                await currentMember.roles.remove(rapatriRoleId);
+                await currentMember.roles.add(exilesRoleId);
+                
+                await voteData.channel.send(
+                  `✅ ${voteData.targetMember.user.tag} a purgé sa peine de ${rapatriDurationHours}h et retrouve son rôle Exilés.`
+                );
+                
+                logger.info(`${voteData.targetMember.user.tag} a retrouvé le rôle Exilés après ${rapatriDurationHours}h`);
+              }
+            } catch (error) {
+              logger.error(`Erreur lors du retour automatique du rôle Exilés pour ${voteData.targetMember.user.tag}:`, error);
+            }
+          }, rapatriDurationMs);
 
-      } catch (error) {
-        logger.error('Erreur lors du kick:', error);
-        await voteData.channel.send(
-          `❌ Erreur lors de l'expulsion de ${voteData.targetMember.user.tag}.`
-        );
+          await logger.security('Vote kick manuel réussi (temporaire)', {
+            target: voteData.targetMember.user.tag,
+            kickVotes: kickCount,
+            pardonVotes: pardonCount,
+            abstentions: voteData.totalVoters - totalVotes,
+            duration: `${rapatriDurationHours}h`
+          }, 'medium');
+
+        } catch (error) {
+          logger.error('Erreur lors de l\'application de la sanction temporaire:', error);
+          await voteData.channel.send(`❌ Erreur lors de l'application de la sanction.`);
+        }
+        
+      } else {
+        // Vote @everyone : EXPULSION du serveur (kick Discord)
+        try {
+          // EXPULSER le membre du serveur Discord
+          await voteData.targetMember.kick('Abus de @everyone - Vote kick approuvé par la majorité absolue');
+
+          const kickEmbed = new EmbedBuilder()
+            .setTitle('🚨 Vote Kick @everyone - EXPULSION DU SERVEUR')
+            .setDescription(
+              `**Coupable :** ${voteData.targetMember.user.tag}\n\n` +
+              `La majorité absolue a voté pour l'expulsion.\n\n` +
+              `${voteData.targetMember.user.tag} a été **EXPULSÉ DU SERVEUR** suite à l'abus de @everyone.\n` +
+              `Il devra être réinvité par un admin pour revenir.\n\n` +
+              `**Résultats :**\n` +
+              `👍 Kick : ${kickCount}\n` +
+              `🙏 Pardon : ${pardonCount}\n` +
+              `🔇 Abstentions : ${voteData.totalVoters - totalVotes}\n\n` +
+              `*Majorité absolue : ${kickCount}/${voteData.totalVoters} Éxilés (> 50%)*`
+            )
+            .setColor('#FF0000')
+            .setTimestamp();
+
+          await voteData.channel.send({
+            embeds: [kickEmbed]
+          });
+
+          await logger.security('Vote kick réussi - Expulsion du serveur', {
+            target: voteData.targetMember.user.tag,
+            reason: 'Abus @everyone',
+            votes: `${kickCount}/${voteData.totalVoters}`,
+            kicked: true
+          }, 'high');
+
+        } catch (error) {
+          logger.error('Erreur lors de l\'expulsion du serveur:', error);
+          await voteData.channel.send(
+            `❌ Erreur lors de l'expulsion de ${voteData.targetMember.user.tag} du serveur.`
+          );
+        }
       }
 
     } else {
       // Pas de majorité : pardon
+      const isManualVote = voteData.subtype === 'manual';
       const pardonEmbed = new EmbedBuilder()
-        .setTitle('✅ Vote Kick - Pardon accordé')
+        .setTitle(isManualVote ? '✅ Vote Kick Manuel - Rejeté' : '✅ Vote Kick - Pardon accordé')
         .setDescription(
           `**Coupable :** ${voteData.targetMember.user.tag}\n\n` +
-          `La majorité a choisi de pardonner.\n\n` +
-          `${voteData.targetMember.user.tag} reste parmi les Exilés.`
+          `La majorité n'a pas voté pour le kick.\n\n` +
+          `${voteData.targetMember.user.tag} reste parmi les Exilés.\n\n` +
+          `**Résultats :**\n` +
+          `👍 Kick : ${kickCount}\n` +
+          `🙏 Pardon : ${pardonCount}\n` +
+          `Abstentions : ${voteData.totalVoters - totalVotes}`
         )
         .setColor('#00FF00')
         .setTimestamp();
@@ -728,7 +1025,7 @@ class VoteSystem {
         embeds: [pardonEmbed]
       });
 
-      logger.info(`Vote kick échoué pour ${voteData.targetMember.user.tag} - Pardon accordé`);
+      logger.info(`Vote kick échoué pour ${voteData.targetMember.user.tag} - Pardon accordé (${kickCount}/${totalVotes})`);
     }
 
     // Supprimer le vote actif

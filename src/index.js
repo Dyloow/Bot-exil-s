@@ -7,6 +7,9 @@ import SummaryManager from './modules/SummaryManager.js';
 import Scheduler from './modules/Scheduler.js';
 import VoteSystem from './modules/VoteSystem.js';
 import SalaryChecker from './modules/SalaryChecker.js';
+import RouletteRusse from './modules/RouletteRusse.js';
+import InsultDetector from './modules/InsultDetector.js';
+import RandomIntervention from './modules/RandomIntervention.js';
 
 // Charger les variables d'environnement
 dotenv.config();
@@ -42,6 +45,9 @@ class DiscordBot {
     this.scheduler = null;
     this.voteSystem = null;
     this.salaryChecker = null;
+    this.rouletteRusse = null;
+    this.insultDetector = null;
+    this.randomIntervention = null;
 
     // État du bot
     this.ready = false;
@@ -206,6 +212,17 @@ class DiscordBot {
       this.salaryChecker = new SalaryChecker(logger, config);
       await this.salaryChecker.initialize(this.client);
       logger.info('Module SalaryChecker initialisé');
+      // Système de roulette russe
+      this.rouletteRusse = new RouletteRusse(this.client, this.guild);
+      logger.info('Module RouletteRusse initialisé');
+
+      // Détecteur d'insultes avec réponses trash
+      this.insultDetector = new InsultDetector(this.client, this.guild);
+      logger.info('Module InsultDetector initialisé');
+
+      // Interventions aléatoires du bot dans les conversations
+      this.randomIntervention = new RandomIntervention(this.client);
+      logger.info('Module RandomIntervention initialisé');
 
     } catch (error) {
       logger.error('Erreur lors de l\'initialisation des modules:', error);
@@ -222,11 +239,32 @@ class DiscordBot {
     // Ignorer les messages hors du serveur
     if (!message.guild || message.guild.id !== this.guild.id) return;
 
+    // Vérifier si le message mentionne le bot et contient une insulte
+    if (this.insultDetector && message.mentions.has(this.client.user.id)) {
+      await this.insultDetector.analyzeMessage(message);
+    }
+
+    // Intervention aléatoire du bot (ne se déclenche que rarement)
+    if (this.randomIntervention) {
+      await this.randomIntervention.handleMessage(message);
+    }
+
     // Vérifier si le message contient @everyone
     if (message.mentions.everyone && this.voteSystem) {
       logger.info(`@everyone détecté de ${message.author.tag}`);
-      // Lancer un vote kick automatique
-      await this.voteSystem.startVoteKick(message.member, message.channel, message);
+      
+      // Vérifier si on est dans le bon channel
+      const commandsChannelId = config.get('server.commandsChannelId');
+      if (commandsChannelId && message.channel.id !== commandsChannelId) {
+        const commandsChannel = this.guild.channels.cache.get(commandsChannelId);
+        await message.reply(`🚨 T'as @everyone tout le monde connard, un vote kick a été lancé dans ${commandsChannel}.`);
+        
+        // Lancer le vote kick automatique (définitif) dans le bon channel
+        await this.voteSystem.startVoteKickEveryone(message.member, commandsChannel, message);
+      } else {
+        // Lancer un vote kick automatique (définitif) dans le channel actuel
+        await this.voteSystem.startVoteKickEveryone(message.member, message.channel, message);
+      }
       return; // Ne pas traiter d'autres commandes
     }
 
@@ -335,8 +373,60 @@ class DiscordBot {
             return;
           }
 
-          // Lancer le vote
+          // Rediriger vers le channel des commandes si configuré
+          const commandsChannelId = config.get('server.commandsChannelId');
+          if (commandsChannelId) {
+            const commandsChannel = this.guild.channels.cache.get(commandsChannelId);
+            if (commandsChannel && message.channel.id !== commandsChannelId) {
+              await message.reply(`✅ Le vote se déroulera dans ${commandsChannel}.`);
+              await this.voteSystem.startVote(message.member, mentionedMember, commandsChannel);
+              return;
+            }
+          }
+
+          // Lancer le vote dans le channel actuel si pas de channel dédié
           await this.voteSystem.startVote(message.member, mentionedMember, message.channel);
+          break;
+
+        case 'vote-kick':
+          if (!this.voteSystem) {
+            await message.reply('❌ Système de vote non disponible.');
+            return;
+          }
+
+          // Récupérer le membre mentionné
+          const kickTarget = message.mentions.members.first();
+
+          if (!kickTarget) {
+            await message.reply('❌ Vous devez mentionner un membre. Exemple: `!vote-kick @pseudo`');
+            return;
+          }
+
+          // Vérifier que ce n'est pas un bot
+          if (kickTarget.user.bot) {
+            await message.reply('❌ Impossible de lancer un vote-kick pour un bot.');
+            return;
+          }
+
+          // Vérifier que ce n'est pas soi-même
+          if (kickTarget.id === message.author.id) {
+            await message.reply('❌ Impossible de lancer un vote-kick contre soi-même.');
+            return;
+          }
+
+          // Rediriger vers le channel des commandes si configuré
+          const vkCommandsChannelId = config.get('server.commandsChannelId');
+          if (vkCommandsChannelId) {
+            const vkCommandsChannel = this.guild.channels.cache.get(vkCommandsChannelId);
+            if (vkCommandsChannel && message.channel.id !== vkCommandsChannelId) {
+              await message.reply(`✅ Le vote-kick se déroulera dans ${vkCommandsChannel}.`);
+              await this.voteSystem.startVoteKickManual(message.member, kickTarget, vkCommandsChannel);
+              return;
+            }
+          }
+
+          // Lancer le vote kick manuel (temporaire) dans le channel actuel si pas de channel dédié
+          await this.voteSystem.startVoteKickManual(message.member, kickTarget, message.channel);
           break;
 
         case 'check_hess':
@@ -361,6 +451,16 @@ class DiscordBot {
           } else {
             await message.reply('❌ Le système de comparaison de salaires n\'est pas disponible.');
           }
+        case 'roulette-russe':
+        case 'roulette':
+        case 'rr':
+          if (!this.rouletteRusse) {
+            await message.reply('❌ Système de roulette russe non disponible.');
+            return;
+          }
+
+          // Lancer la roulette russe pour le membre qui utilise la commande
+          await this.rouletteRusse.play(message.member, message.channel);
           break;
 
         case 'remind':
@@ -386,56 +486,48 @@ class DiscordBot {
    */
   async showHelp(message) {
     const embed = {
-      color: 0x3498db,
-      title: '📚 Commandes disponibles',
+      color: 0xFF0000,
+      title: '📚 Commandes JR - La Table des Éxilés',
+      description: 'Voici toutes les commandes disponibles. Les commandes peuvent être utilisées partout, les votes se dérouleront automatiquement dans le channel dédié.',
       fields: [
         {
-          name: '!résumé [nombre]',
-          value: 'Génère un résumé des derniers messages du channel (par défaut: 100)',
+          name: '🗳️ **Système de Vote**',
+          value: '`!vote @membre` - Lance un vote pour admettre quelqu\'un parmi les Éxilés (majorité >50%, 24h)\n' +
+                '`!vote-kick @membre` - Lance un vote kick temporaire → Rapatrié pendant 24h (majorité >50%, 5min)\n' +
+                '⚠️ Abus de @everyone → Vote kick automatique = exclusion DÉFINITIVE',
           inline: false
         },
         {
-          name: '!vote @membre',
-          value: 'Lance un vote unanime pour attribuer le rôle Exilé à un membre',
+          name: '🎲 **Roulette Russe**',
+          value: '`!roulette-russe` ou `!rr` - 1 chance sur 6 d\'être renommé avec un nom dégradant pendant 24h',
           inline: false
         },
         {
-          name: '!check_hess [pseudo]',
-          value: 'Vérifie combien d\'argent un membre aurait gagné avec le salaire de Toto',
+          name: '💬 **Résumés IA**',
+          value: '`!résumé [nombre]` - Génère un résumé des derniers messages (défaut: 100)',
           inline: false
         },
         {
-          name: '!add_salary [montant]',
-          value: 'Définit votre propre salaire annuel',
+          name: '💰 **Comparateur de Salaires**',
+          value: '`!check_hess [pseudo]` - Compare combien un membre aurait gagné avec le salaire de référence\n' +
+                '`!add_salary [montant]` - Définit ton salaire annuel\n' +
+                '`!list_salaries` - Affiche tous les salaires enregistrés',
           inline: false
         },
         {
-          name: '!list_salaries',
-          value: 'Affiche la liste de tous les salaires enregistrés',
+          name: '⚙️ **Informations**',
+          value: '`!status` - État du bot et statistiques\n' +
+                '`!config` - Configuration actuelle (Éxilés uniquement)\n' +
+                '`!help` - Affiche cette aide',
           inline: false
         },
         {
-          name: '!remind [pseudo]',
-          value: 'Active le rappel quotidien de salaire pour un utilisateur',
-          inline: false
-        },
-        {
-          name: '!status',
-          value: 'Affiche l\'état du bot et les statistiques',
-          inline: false
-        },
-        {
-          name: '!config',
-          value: 'Affiche la configuration actuelle (modérateurs uniquement)',
-          inline: false
-        },
-        {
-          name: '!help',
-          value: 'Affiche cette aide',
+          name: '🤖 **Fonctionnalités Automatiques**',
+          value:'• Purge automatique quotidienne à 23h42 (kick des non-Éxilés)',
           inline: false
         }
       ],
-      footer: { text: 'Bot Guardian - Protection et résumés IA' },
+      footer: { text: 'JR - Bot de La Table des Éxilés | Système de votes, roulette russe, insultes et résumés IA' },
       timestamp: new Date()
     };
 
@@ -570,6 +662,26 @@ class DiscordBot {
   }
 
   async onMemberUpdate(oldMember, newMember) {
+    // Bloquer les changements de nickname pendant la roulette russe
+    if (this.rouletteRusse && oldMember.nickname !== newMember.nickname) {
+      if (!this.rouletteRusse.canChangeNickname(newMember.id)) {
+        // Obtenir le nom dégradant imposé
+        const degradingName = this.rouletteRusse.getDegradingName(newMember.id);
+        
+        // Si le nouveau nom n'est PAS le nom dégradant, c'est une tentative de changement
+        if (newMember.nickname !== degradingName) {
+          try {
+            // Restaurer le nom dégradant
+            await newMember.setNickname(degradingName, 'Roulette russe - Changement bloqué');
+            logger.info(`Changement de nickname bloqué pour ${newMember.user.tag} (roulette russe active)`);
+          } catch (error) {
+            logger.error('Erreur lors du blocage du changement de nickname:', error);
+          }
+        }
+        // Sinon, c'est le bot qui vient de mettre le nom dégradant, on ignore
+      }
+    }
+
     if (this.moderationGuard) {
       await this.moderationGuard.handleMemberUpdate(oldMember, newMember);
     }

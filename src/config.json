@@ -2,10 +2,13 @@
   "server": {
     "guildId": "FROM_ENV",
     "logChannelId": "FROM_ENV",
-    "summaryChannelId": "FROM_ENV"
+    "summaryChannelId": "FROM_ENV",
+    "commandsChannelId": "FROM_ENV"
   },
   "roles": {
     "exilesRoleId": "FROM_ENV",
+    "condamneRoleId": "FROM_ENV",
+    "rapatriRoleId": "FROM_ENV",
     "protectedRoleId": "FROM_ENV",
     "moderatorRoles": [
       "FROM_ENV"
@@ -27,12 +30,41 @@
   },
   "vote": {
     "durationHours": 24,
-    "missingVotesCountAsYes": true
+    "missingVotesCountAsYes": false
   },
   "voteKick": {
-    "durationMinutes": 5,
-    "missingVotesCountAsPardon": true,
-    "showVoters": true
+    "durationMinutes": 10,
+    "rapatriDurationHours": 24
+  },
+  "voteKickEveryone": {
+    "durationHours": 24
+  },
+  "rouletteRusse": {
+    "chanceOfLosing": 6,
+    "durationHours": 24,
+    "degradingNames": [
+      "La pute à JR",
+      "Le larbin de JR",
+      "La chienne à JR",
+      "Le soumis de JR",
+      "L'esclave de JR",
+      "Le toutou de JR"
+    ]
+  },
+  "insultDetector": {
+    "enabled": true,
+    "botMentionRequired": true,
+    "model": "gpt-4o-mini",
+    "temperature": 1.0
+  },
+  "randomIntervention": {
+    "enabled": true,
+    "chancePercent": 0.5,
+    "contextMessages": 10,
+    "minMessageLength": 20,
+    "cooldownMinutes": 30,
+    "model": "gpt-4o-mini",
+    "temperature": 0.9
   },
   "moderation": {
     "maxActionsPerHour": 5,
@@ -55,7 +87,7 @@
     "model": "gpt-4o-mini",
     "maxTokensOutput": 16384,
     "temperature": 0.3,
-    "systemPrompt": "Tu dois résumer cette conversation Discord comme si tu la racontais à un pote à l'oral : explique en quelques phrases ce qui s'est passé dans l'ensemble, dans quel ordre, pourquoi les gens parlaient de ça, ce qui a été testé ou décidé, avec un ton naturel et détendu, sans listes ni formalisme, en reliant les messages entre eux ; mets en **gras** (Markdown) les mots ou sujets clés importants au fil du texte, puis ajoute à la fin, sur une nouvelle ligne, un **TL;DR** encore plus concis en 1–2 phrases maximum.\n"
+    "systemPrompt": "Ta réponse DOIT OBLIGATOIREMENT commencer par : \"Alors attends jtexplique 🚬\"\n\nRaconte ce qui s'est passé dans cette conv Discord de manière directe et factuelle. Va droit au but : dis QUI a parlé de QUOI, comment les sujets se sont enchaînés, et ce qui a été décidé ou testé. Pas de constatations inutiles, pas de commentaires superflus, pas de \"genre\" ou \"en fait\" à répétition.\n\nFais les liens entre les messages de manière naturelle mais concise : \"X a dit Y, du coup Z a fait ça\". Mets en **gras** les trucs importants (features, décisions, bugs). Ton naturel mais efficace.\n\nÀ la fin, ligne vide puis **TL;DR** en 1-2 phrases max.\n\nSois direct, factuel, sans bullshit."
   },
   "logging": {
     "logToConsole": true,

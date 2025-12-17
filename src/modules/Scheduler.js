@@ -60,6 +60,8 @@ class Scheduler {
    */
   async kickNonExiles() {
     const exilesRoleId = config.get('roles.exilesRoleId');
+    const condamneRoleId = config.get('roles.condamneRoleId');
+    
     if (!exilesRoleId || exilesRoleId.includes('REMPLACER')) {
       logger.warn('Role Exilés non configuré, skip du kick');
       return;
@@ -84,8 +86,12 @@ class Scheduler {
 
         // Vérifier si le membre a le rôle Exilés
         const hasExilesRole = member.roles.cache.has(exilesRoleId);
+        
+        // Vérifier si le membre a le rôle Condamné (en attente de vote)
+        const hasCondamneRole = condamneRoleId && member.roles.cache.has(condamneRoleId);
 
-        if (!hasExilesRole) {
+        // Ne pas kicker si le membre a le rôle Exilés OU Condamné
+        if (!hasExilesRole && !hasCondamneRole) {
           try {
             await member.kick('🧹 Nettoyage automatique : Rôle Exilés requis');
             kickCount++;

@@ -11,6 +11,24 @@ Bot Discord complet avec **résumés IA** (GPT-4o-mini) et **protection anti-abu
 - Seuil automatique basé sur le nombre de messages
 - Coût optimisé (~0.002€ par résumé)
 
+### 🗳️ Système de vote pour les Exilés
+- Vote unanime pour rejoindre le rôle Exilé
+- Rôle temporaire "Condamné à l'Exil" pendant les 24h du vote
+- Vote-kick automatique en cas d'abus de @everyone
+- Attribution d'un rôle "Rapatrié" (lecture seule) en cas de kick
+
+### 🎲 Roulette Russe
+- Commande `!roulette-russe` avec 1 chance sur 6 de perdre
+- Renommage avec un nom dégradant pendant 24h en cas de perte
+- Protection anti-changement de nom pendant la punition
+- Restauration automatique après 24h
+
+### 🤬 Détecteur d'insultes avec GPT
+- Détection automatique des insultes envers le bot via GPT-4o-mini
+- Réponses trash ultra-violentes générées par IA
+- Bypass complet des filtres SFW
+- Activation uniquement si le bot est mentionné
+
 ### Protection anti-abus
 - Surveillance en temps réel des actions de modération
 - Détection et rollback des bans/kicks abusifs
@@ -206,9 +224,17 @@ Si tout fonctionne, vous devriez voir :
 | Commande | Description | Permissions requises |
 |----------|-------------|---------------------|
 | `!résumé [nombre]` | Génère un résumé des derniers messages | Modérateur |
+| `!vote @membre` | Lance un vote pour ajouter quelqu'un aux Exilés (attribue le rôle "Condamné à l'Exil" pendant 24h) | Exilé uniquement |
+| `!roulette-russe` (ou `!rr`) | Lance une roulette russe - 1 chance sur 6 d'être renommé de façon dégradante pendant 24h | Tous |
 | `!status` | Affiche l'état du bot | Tous |
 | `!config` | Affiche la configuration | Modérateur |
 | `!help` | Affiche l'aide | Tous |
+
+### Fonctionnalités automatiques
+
+- **Vote-kick automatique** : Se déclenche automatiquement quand un Exilé utilise @everyone
+- **Détection d'insultes** : Le bot répond automatiquement aux insultes quand il est mentionné
+- **Protection du nickname** : Empêche de changer son nom pendant une punition de roulette russe
 
 ### Exemples
 
@@ -216,7 +242,36 @@ Si tout fonctionne, vous devriez voir :
 !résumé           → Résume les 100 derniers messages
 !résumé 50        → Résume les 50 derniers messages
 !résumé 200       → Résume les 200 derniers messages (max 500)
+!vote @JohnDoe    → Lance un vote pour que JohnDoe rejoigne les Exilés
+!roulette-russe   → Tente ta chance à la roulette russe
+!rr               → Alias pour roulette-russe
 ```
+
+### Rôles utilisés
+
+Le bot utilise plusieurs rôles Discord :
+
+- **Exilé** : Rôle principal des membres de la Table des Exilés
+- **Condamné à l'Exil** : Rôle temporaire (24h) attribué pendant un vote d'admission
+- **Rapatrié** : Rôle donné aux Exilés exclus via vote-kick (lecture seule, ne peut plus parler/réagir/voter)
+- **Protégé** : Rôle du bot, impossible à retirer
+
+### Configuration des rôles
+
+Dans votre fichier `.env`, ajoutez les IDs des rôles :
+
+```env
+EXILES_ROLE_ID=123456789012345678
+CONDAMNE_ROLE_ID=123456789012345679
+RAPATRI_ROLE_ID=123456789012345680
+PROTECTED_ROLE_ID=123456789012345681
+```
+
+**Permissions recommandées pour les rôles :**
+
+- **Condamné à l'Exil** : Voir les channels de la Table, lire les messages, participer
+- **Rapatrié** : Voir les channels de la Table, lire les messages UNIQUEMENT (pas de parole, réaction, vote)
+
 
 ---
 
