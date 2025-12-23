@@ -205,7 +205,7 @@ class VoteSystem {
     voteData.votes.set(interaction.user.id, voteChoice);
 
     await interaction.reply({
-      content: `✅ Votre vote a été enregistré de manière anonyme.`,
+      content: `✅ Votre vote a été enregistré.`,
       ephemeral: true
     });
 
@@ -254,7 +254,7 @@ class VoteSystem {
       
       if (isManual) {
         const durationMinutes = config.get('voteKick.durationMinutes') || 10;
-        const rapatriDurationHours = config.get('voteKick.rapatriDurationHours') || 24;
+        const rapatriDurationHours = config.get('voteKick.rapatriDurationHours') || 1;
         
         voteEmbed = new EmbedBuilder()
           .setTitle('⚖️ Vote Kick Manuel')
@@ -775,7 +775,7 @@ class VoteSystem {
 
     // Récupérer la durée du vote kick depuis la config (en minutes)
     const durationMinutes = config.get('voteKick.durationMinutes') || 5;
-    const rapatriDurationHours = config.get('voteKick.rapatriDurationHours') || 24;
+    const rapatriDurationHours = config.get('voteKick.rapatriDurationHours') || 1;
 
     // Créer l'embed du vote kick manuel
     const voteEmbed = new EmbedBuilder()
@@ -900,9 +900,9 @@ class VoteSystem {
       const exilesRoleId = config.get('roles.exilesRoleId');
       
       if (isManual) {
-        // Vote manuel : retrait temporaire avec rôle Rapatrié pendant 24h
+        // Vote manuel : retrait temporaire avec rôle Rapatrié pendant 1h
         const rapatriRoleId = config.get('roles.rapatriRoleId');
-        const rapatriDurationHours = config.get('voteKick.rapatriDurationHours') || 24;
+        const rapatriDurationHours = config.get('voteKick.rapatriDurationHours') || 1;
         
         try {
           // Retirer le rôle Exilés

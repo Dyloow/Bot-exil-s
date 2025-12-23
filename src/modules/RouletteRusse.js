@@ -60,7 +60,7 @@ class RouletteRusse {
 
         logger.info(`${member.user.tag} a perdu à la roulette russe - Renommé: ${randomName}`);
 
-        // Programmer la restauration du nickname
+        // Programmer la restauration du nickname après 24h
         const durationMs = durationHours * 60 * 60 * 1000;
         setTimeout(async () => {
           await this.restoreNickname(member.id);

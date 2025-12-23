@@ -2,6 +2,7 @@
   "server": {
     "guildId": "FROM_ENV",
     "logChannelId": "FROM_ENV",
+    "logTalkId": "FROM_ENV",
     "summaryChannelId": "FROM_ENV",
     "commandsChannelId": "FROM_ENV"
   },
@@ -50,12 +51,6 @@
       "L'esclave de JR",
       "Le toutou de JR"
     ]
-  },
-  "insultDetector": {
-    "enabled": true,
-    "botMentionRequired": true,
-    "model": "gpt-4o-mini",
-    "temperature": 1.0
   },
   "randomIntervention": {
     "enabled": true,

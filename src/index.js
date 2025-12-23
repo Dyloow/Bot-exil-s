@@ -8,7 +8,6 @@ import Scheduler from './modules/Scheduler.js';
 import VoteSystem from './modules/VoteSystem.js';
 import SalaryChecker from './modules/SalaryChecker.js';
 import RouletteRusse from './modules/RouletteRusse.js';
-import InsultDetector from './modules/InsultDetector.js';
 import RandomIntervention from './modules/RandomIntervention.js';
 
 // Charger les variables d'environnement
@@ -26,7 +25,8 @@ class DiscordBot {
         GatewayIntentBits.GuildModeration,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMessageReactions
+        GatewayIntentBits.GuildMessageReactions,
+        GatewayIntentBits.DirectMessages
       ],
       partials: [
         Partials.Message,
@@ -46,7 +46,6 @@ class DiscordBot {
     this.voteSystem = null;
     this.salaryChecker = null;
     this.rouletteRusse = null;
-    this.insultDetector = null;
     this.randomIntervention = null;
 
     // État du bot
@@ -151,15 +150,15 @@ class DiscordBot {
     }
 
     // Récupérer le channel de logs
-    const logChannelId = config.get('server.logChannelId');
-    if (logChannelId && !logChannelId.includes('REMPLACER')) {
-      this.logChannel = this.guild.channels.cache.get(logChannelId);
+    const logTalkId = config.get('server.logTalkId');
+    if (logTalkId && !logTalkId.includes('REMPLACER')) {
+      this.logChannel = this.guild.channels.cache.get(logTalkId);
 
-      if (this.logChannel) {
-        logger.setLogChannel(this.logChannel);
-        logger.info(`📝 Channel de logs configuré: #${this.logChannel.name}`);
+      if (this.logTalkId) {
+        logger.setLogChannel(this.logTalkId);
+        logger.info(`📝 Channel de logs configuré: #${this.logTalkId.name}`);
       } else {
-        logger.warn(`Channel de logs ${logChannelId} introuvable - Logs Discord désactivés`);
+        logger.warn(`Channel de logs ${logTalkId} introuvable - Logs Discord désactivés`);
       }
     } else {
       logger.warn('Channel de logs non configuré - Logs Discord désactivés');
@@ -216,10 +215,6 @@ class DiscordBot {
       this.rouletteRusse = new RouletteRusse(this.client, this.guild);
       logger.info('Module RouletteRusse initialisé');
 
-      // Détecteur d'insultes avec réponses trash
-      this.insultDetector = new InsultDetector(this.client, this.guild);
-      logger.info('Module InsultDetector initialisé');
-
       // Interventions aléatoires du bot dans les conversations
       this.randomIntervention = new RandomIntervention(this.client);
       logger.info('Module RandomIntervention initialisé');
@@ -236,13 +231,14 @@ class DiscordBot {
     // Ignorer les messages du bot
     if (message.author.bot) return;
 
-    // Ignorer les messages hors du serveur
-    if (!message.guild || message.guild.id !== this.guild.id) return;
-
-    // Vérifier si le message mentionne le bot et contient une insulte
-    if (this.insultDetector && message.mentions.has(this.client.user.id)) {
-      await this.insultDetector.analyzeMessage(message);
+    // Gérer les messages privés (DMs)
+    if (!message.guild) {
+      await this.handleDirectMessage(message);
+      return;
     }
+
+    // Ignorer les messages hors du serveur
+    if (message.guild.id !== this.guild.id) return;
 
     // Intervention aléatoire du bot (ne se déclenche que rarement)
     if (this.randomIntervention) {
@@ -282,6 +278,131 @@ class DiscordBot {
     if (this.summaryManager) {
       await this.summaryManager.checkAutoTrigger(message.channel);
     }
+  }
+
+  /**
+   * Gestion des messages privés (DMs)
+   */
+  async handleDirectMessage(message) {
+    logger.info(`Message privé reçu de ${message.author.tag} (${message.author.id}): "${message.content}"`);
+    
+    // Vérifier que c'est l'utilisateur autorisé
+    const authorizedUserId = '266314146470035456';
+    if (message.author.id !== authorizedUserId) {
+      logger.warn(`Utilisateur non autorisé: ${message.author.tag}`);
+      await message.reply('❌ Vous n\'êtes pas autorisé à utiliser les commandes privées.');
+      return;
+    }
+
+    // Vérifier si c'est une commande
+    if (!message.content.startsWith('!')) {
+      logger.info('Message sans commande, ignoré');
+      return;
+    }
+
+    const args = message.content.slice(1).trim().split(/ +/);
+    const commandName = args.shift().toLowerCase();
+
+    if (commandName === 'prompt') {
+      // Extraire le message avec format: !prompt [messageId] "message"
+      const fullMessage = message.content.slice(1).trim(); // Retirer le !
+      
+      // Tenter de matcher avec ID de message: prompt MESSAGE_ID "text" ou prompt MESSAGE_ID text
+      let messageIdMatch = fullMessage.match(/^prompt\s+(\d+)\s+["'](.+)["']$/s);
+      if (!messageIdMatch) {
+        messageIdMatch = fullMessage.match(/^prompt\s+(\d+)\s+(.+)$/s);
+      }
+      
+      // Ou sans ID: prompt "text" ou prompt text
+      let simpleMatch = fullMessage.match(/^prompt\s+["'](.+)["']$/s) || fullMessage.match(/^prompt\s+(.+)$/s);
+      
+      let messageId = null;
+      let messageToSend = null;
+      
+      if (messageIdMatch && messageIdMatch[1] && messageIdMatch[2]) {
+        // Format avec ID de message
+        messageId = messageIdMatch[1];
+        messageToSend = messageIdMatch[2];
+      } else if (simpleMatch && simpleMatch[1]) {
+        // Format simple sans ID
+        messageToSend = simpleMatch[1];
+      } else {
+        await message.reply('❌ Format invalide.\nUtilisez: `!prompt "votre message"` ou `!prompt MESSAGE_ID "votre message"`');
+        return;
+      }
+
+      try {
+        // Récupérer le channel de log (on l'utilise comme channel général)
+        const logTalkId = config.get('server.logTalkId');
+        logger.info(`logTalkId configuré: ${logTalkId}`);
+        
+        if (!logTalkId || logTalkId === 'FROM_ENV') {
+          await message.reply('❌ Channel général non configuré dans .env (LOG_TALK_ID).');
+          return;
+        }
+
+        const targetChannel = this.guild.channels.cache.get(logTalkId);
+        logger.info(`Channel trouvé: ${targetChannel ? targetChannel.name : 'NULL'}`);
+        
+        if (!targetChannel) {
+          await message.reply(`❌ Channel général introuvable. ID: ${logTalkId}\nVérifiez que l'ID est correct et que le bot a accès à ce channel.`);
+          return;
+        }
+
+        // Convertir les @username en vraies mentions <@ID>
+        messageToSend = await this.convertMentions(messageToSend);
+
+        // Si un ID de message est fourni, répondre à ce message
+        if (messageId) {
+          try {
+            const targetMessage = await targetChannel.messages.fetch(messageId);
+            await targetMessage.reply(messageToSend);
+            await message.reply(`✅ Réponse envoyée au message ID ${messageId}.`);
+          } catch (error) {
+            logger.error(`Erreur lors de la récupération du message ${messageId}:`, error);
+            await message.reply(`❌ Message avec l'ID ${messageId} introuvable.`);
+            return;
+          }
+        } else {
+          // Sinon, envoyer un message normal
+          await targetChannel.send(messageToSend);
+          await message.reply('✅ Message envoyé avec succès dans le channel général.');
+        }
+
+        logger.info(`Message prompt envoyé par ${message.author.tag}: "${messageToSend}"${messageId ? ` (réponse à ${messageId})` : ''}`);
+
+      } catch (error) {
+        logger.error('Erreur lors de l\'envoi du prompt:', error);
+        await message.reply('❌ Erreur lors de l\'envoi du message.');
+      }
+    }
+  }
+
+  /**
+   * Convertit les @username en vraies mentions <@ID>
+   */
+  async convertMentions(text) {
+    // Regex pour détecter @username (sans espace dans le username)
+    const mentionRegex = /@(\w+)/g;
+    let result = text;
+    const matches = [...text.matchAll(mentionRegex)];
+
+    for (const match of matches) {
+      const username = match[1];
+      
+      // Chercher le membre dans le serveur par username (case insensitive)
+      const member = this.guild.members.cache.find(
+        m => m.user.username.toLowerCase() === username.toLowerCase()
+      );
+
+      if (member) {
+        // Remplacer @username par <@ID>
+        result = result.replace(match[0], `<@${member.id}>`);
+        logger.info(`Mention convertie: @${username} -> <@${member.id}>`);
+      }
+    }
+
+    return result;
   }
 
   /**
@@ -493,7 +614,7 @@ class DiscordBot {
         {
           name: '🗳️ **Système de Vote**',
           value: '`!vote @membre` - Lance un vote pour admettre quelqu\'un parmi les Éxilés (majorité >50%, 24h)\n' +
-                '`!vote-kick @membre` - Lance un vote kick temporaire → Rapatrié pendant 24h (majorité >50%, 5min)\n' +
+                '`!vote-kick @membre` - Lance un vote kick temporaire → Rapatrié pendant 1h (majorité >50%, 5min)\n' +
                 '⚠️ Abus de @everyone → Vote kick automatique = exclusion DÉFINITIVE',
           inline: false
         },
@@ -527,7 +648,7 @@ class DiscordBot {
           inline: false
         }
       ],
-      footer: { text: 'JR - Bot de La Table des Éxilés | Système de votes, roulette russe, insultes et résumés IA' },
+      footer: { text: 'JR - Bot de La Table des Éxilés | Système de votes, roulette russe et résumés IA' },
       timestamp: new Date()
     };
 

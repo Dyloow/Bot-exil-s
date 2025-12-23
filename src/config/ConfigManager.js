@@ -30,6 +30,9 @@ class Config {
       if (process.env.LOG_CHANNEL_ID && !process.env.LOG_CHANNEL_ID.includes('REMPLACER')) {
         config.server.logChannelId = process.env.LOG_CHANNEL_ID;
       }
+      if (process.env.LOG_TALK_ID && !process.env.LOG_TALK_ID.includes('REMPLACER')) {
+        config.server.logTalkId = process.env.LOG_TALK_ID;
+      }
       if (process.env.SUMMARY_CHANNEL_ID && !process.env.SUMMARY_CHANNEL_ID.includes('REMPLACER')) {
         config.server.summaryChannelId = process.env.SUMMARY_CHANNEL_ID;
       }
