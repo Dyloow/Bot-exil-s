@@ -9,7 +9,7 @@
     "dev": "node --watch src/index.js",
     "setup": "node setup-roles.js",
     "setup-channels": "node setup-channels.js",
-    "test": "echo \"Tests à implémenter\" && exit 0"
+    "test": "node --test"
   },
   "keywords": ["discord", "bot", "ai", "moderation", "security"],
   "author": "",
