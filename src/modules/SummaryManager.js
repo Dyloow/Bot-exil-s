@@ -170,7 +170,7 @@ class SummaryManager {
         await statusMessage.delete().catch(() => {});
       }
 
-      await logger.aiSummary(channel.name, window.messages.length, result.usage?.total_tokens ?? transcriptText.length);
+      await logger.aiSummary(channel.name, window.messages.length, result.usage?.total_tokens ?? null);
     } catch (error) {
       logger.error('Erreur lors de la génération du résumé:', error);
       if (statusMessage) {
@@ -309,6 +309,7 @@ class SummaryManager {
       if (usedImages.length > 0 && this.looksLikeImageError(error)) {
         logger.warn(`Erreur IA liée aux images, nouvelle tentative sans images : ${error.message}`);
         usedImages = [];
+        transcriptText += '\n\n(Les images ne sont pas disponibles : ne décris pas les [photo img N] / [GIF img N], mentionne seulement qu\'une image a été envoyée.)';
         result = await this.callAI(transcriptText, usedImages, maxTopics);
       } else {
         throw error;

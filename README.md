@@ -9,7 +9,7 @@ Bot Discord complet avec **résumés IA** (GPT-4o-mini) et **protection anti-abu
 - Déclenchement manuel (`!résumé`), par nombre de messages ou par durée (`!résumé 2h`, `!résumé 1j`)
 - Lit le second degré, décrit les photos/GIFs, et tient compte des heures quand ça compte
 - Seuil automatique optionnel basé sur le nombre de messages (désactivé par défaut)
-- Coût optimisé (~0.002€ par résumé)
+- Coût optimisé (~0.005€ par résumé, images comprises)
 
 ### 🗳️ Système de vote pour les Exilés
 - Vote unanime pour rejoindre le rôle Exilé

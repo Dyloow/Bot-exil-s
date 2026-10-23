@@ -149,8 +149,13 @@ export function renderSummary(input, meta = {}) {
     }
   }
 
-  if (!data || typeof data !== 'object' || !Array.isArray(data.topics)) {
+  if (!data || typeof data !== 'object') {
     return renderFallback(typeof input === 'string' ? input : JSON.stringify(input ?? ''), meta);
+  }
+
+  // JSON valide mais sans `topics` : on garde le TL;DR plutôt que de poster du JSON brut
+  if (!Array.isArray(data.topics)) {
+    data = { tldr: typeof data.tldr === 'string' ? data.tldr : 'Résumé indisponible (réponse IA mal formée).', vibe: data.vibe, topics: [] };
   }
 
   const tldr = data.tldr ? `**TL;DR**\n${data.tldr}` : '';

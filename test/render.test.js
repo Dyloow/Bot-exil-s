@@ -168,3 +168,10 @@ test('renderSummary footer shows the plain count when nothing was omitted', () =
   const lastEmbed = embeds[embeds.length - 1];
   assert.equal(lastEmbed.footer.text, '42 messages · 10:00 → 14:32');
 });
+
+test('renderSummary keeps the TL;DR when the JSON has no topics instead of posting raw JSON', () => {
+  const embeds = renderSummary(JSON.stringify({ tldr: 'On a parlé de pizza.', sujets: [] }), { channelName: 'general' });
+  const text = JSON.stringify(embeds);
+  assert.ok(text.includes('On a parlé de pizza.'));
+  assert.ok(!text.includes('sujets'));
+});
