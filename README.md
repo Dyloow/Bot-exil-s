@@ -4,11 +4,11 @@ Bot Discord complet avec **résumés IA** (GPT-4o-mini) et **protection anti-abu
 
 ## 🎯 Fonctionnalités principales
 
-### 📝 Résumés IA automatiques
-- Résumés des conversations via GPT-4o-mini
-- Déclenchement manuel (`!résumé`) ou automatique
-- Planification personnalisable (6x/jour par défaut)
-- Seuil automatique basé sur le nombre de messages
+### 📝 Résumés IA par sujets
+- Résumé des conversations via GPT-4o-mini, organisé par sujets (qui a dit quoi, ce qui a été décidé)
+- Déclenchement manuel (`!résumé`), par nombre de messages ou par durée (`!résumé 2h`, `!résumé 1j`)
+- Lit le second degré, décrit les photos/GIFs, et tient compte des heures quand ça compte
+- Seuil automatique optionnel basé sur le nombre de messages (désactivé par défaut)
 - Coût optimisé (~0.002€ par résumé)
 
 ### 🗳️ Système de vote pour les Exilés
@@ -223,7 +223,7 @@ Si tout fonctionne, vous devriez voir :
 
 | Commande | Description | Permissions requises |
 |----------|-------------|---------------------|
-| `!résumé [nombre]` | Génère un résumé des derniers messages | Modérateur |
+| `!résumé [nombre\|durée]` | Génère un résumé par sujets (ex: `!résumé`, `!résumé 200`, `!résumé 2h`, `!résumé 1j`) | Modérateur |
 | `!vote @membre` | Lance un vote pour ajouter quelqu'un aux Exilés (attribue le rôle "Condamné à l'Exil" pendant 24h) | Exilé uniquement |
 | `!roulette-russe` (ou `!rr`) | Lance une roulette russe - 1 chance sur 6 d'être renommé de façon dégradante pendant 24h | Tous |
 | `!status` | Affiche l'état du bot | Tous |
@@ -239,9 +239,11 @@ Si tout fonctionne, vous devriez voir :
 ### Exemples
 
 ```
-!résumé           → Résume les 100 derniers messages
+!résumé           → Résume les 100 derniers messages, par sujets
 !résumé 50        → Résume les 50 derniers messages
-!résumé 200       → Résume les 200 derniers messages (max 500)
+!résumé 200       → Résume les 200 derniers messages (de 10 à 1000)
+!résumé 2h        → Résume les messages des 2 dernières heures
+!résumé 1j        → Résume les messages du dernier jour (jusqu'à 48h)
 !vote @JohnDoe    → Lance un vote pour que JohnDoe rejoigne les Exilés
 !roulette-russe   → Tente ta chance à la roulette russe
 !rr               → Alias pour roulette-russe
@@ -425,13 +427,17 @@ Dans `config.json` :
 
 ```json
 "summary": {
-  "autoTriggerThreshold": 200,   // Nb de messages avant résumé auto
-  "scheduledTimes": ["08:00", "20:00"],  // Heures des résumés
-  "maxTokens": 5000              // Taille max du contexte
+  "maxMessages": 100,             // Nb de messages par défaut (!résumé sans argument)
+  "maxCount": 1000,               // Nb de messages max (!résumé 1000)
+  "maxHours": 48,                 // Durée max (!résumé 2j)
+  "maxImages": 6,                 // Nb de photos/GIFs envoyés à l'IA
+  "maxTopics": 6,                 // Nb de sujets max dans le résumé
+  "cooldownSeconds": 60,          // Délai mini entre deux résumés sur un channel
+  "autoTriggerThreshold": 200     // Nb de messages avant résumé auto (0 = désactivé)
 },
 "ai": {
   "temperature": 0.5,            // Créativité (0-1)
-  "maxTokensOutput": 800,        // Taille du résumé
+  "maxTokensOutput": 1200,       // Taille du résumé
   "systemPrompt": "Votre prompt personnalisé..."
 }
 ```

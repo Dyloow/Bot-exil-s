@@ -625,7 +625,9 @@ class DiscordBot {
         },
         {
           name: '💬 **Résumés IA**',
-          value: '`!résumé [nombre]` - Génère un résumé des derniers messages (défaut: 100)',
+          value: '`!résumé` - Résume les 100 derniers messages, par sujets\n' +
+                '`!résumé 200` - Résume les 200 derniers messages (de 10 à 1000)\n' +
+                '`!résumé 2h` ou `!résumé 1j` - Résume une durée (jusqu\'à 48h)',
           inline: false
         },
         {

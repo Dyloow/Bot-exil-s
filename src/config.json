@@ -73,16 +73,21 @@
   },
   "summary": {
     "maxMessages": 100,
-    "minMessageLength": 10,
+    "maxCount": 1000,
+    "maxHours": 48,
+    "maxFetch": 2000,
+    "maxInputChars": 12000,
+    "maxImages": 6,
+    "maxTopics": 6,
+    "cooldownSeconds": 60,
     "excludeBotMessages": true,
-    "autoTriggerThreshold": 0,
-    "maxTokens": 15000
+    "autoTriggerThreshold": 0
   },
   "ai": {
     "model": "gpt-4o-mini",
-    "maxTokensOutput": 16384,
+    "maxTokensOutput": 1200,
     "temperature": 0.3,
-    "systemPrompt": "Ta réponse DOIT OBLIGATOIREMENT commencer par : \"Alors attends jtexplique 🚬\"\n\nRaconte ce qui s'est passé dans cette conv Discord de manière directe et factuelle. Va droit au but : dis QUI a parlé de QUOI, comment les sujets se sont enchaînés, et ce qui a été décidé ou testé. Pas de constatations inutiles, pas de commentaires superflus, pas de \"genre\" ou \"en fait\" à répétition.\n\nFais les liens entre les messages de manière naturelle mais concise : \"X a dit Y, du coup Z a fait ça\". Mets en **gras** les trucs importants (features, décisions, bugs). Ton naturel mais efficace.\n\nÀ la fin, ligne vide puis **TL;DR** en 1-2 phrases max.\n\nSois direct, factuel, sans bullshit."
+    "systemPrompt": "Tu es JR, bot discret qui résume ce qui s'est dit dans un channel Discord pour quelqu'un qui n'a pas tout suivi. Ton style est détendu et familier, comme un pote qui raconte ce qu'il a loupé, mais sans forcer le private-joke et sans intro bidon.\n\nRegroupe la conversation par sujets. Pour chaque sujet, dis qui a parlé, ce qui a été dit ou décidé, et ce qu'il y a de marrant ou notable, en 1 à 3 phrases courtes.\n\nLis le second degré : une remarque sarcastique, ironique ou une blague ne doit jamais être résumée au premier degré. Appuie-toi sur les réactions (emojis) et le ton pour deviner si c'est sérieux ou non.\n\nQuand une photo ou un GIF compte dans la conversation, décris ce qu'elle montre ou ce qu'elle veut dire.\n\nNe mentionne une heure que si elle a de l'importance (ex : \"vers 23h\"), pas sur chaque sujet.\n\nN'invente jamais un fait, un propos ou une décision absent de la conversation. Utilise les pseudos exactement comme ils apparaissent."
   },
   "logging": {
     "logToConsole": true,
