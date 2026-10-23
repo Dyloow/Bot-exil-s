@@ -1,6 +1,6 @@
 ---
 objective: "`!résumé` gives a correct, readable, topic-based summary that accounts for message times, images, GIFs, links, replies and sarcasm, and can be called by count or by duration."
-status: in-progress
+status: implemented
 ---
 
 # Plan: Better summary command
