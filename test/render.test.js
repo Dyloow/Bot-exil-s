@@ -125,3 +125,46 @@ test('groupEmbeds packs embeds into messages of at most 10', () => {
 test('groupEmbeds returns a single empty message for an empty embed list', () => {
   assert.deepEqual(groupEmbeds([]), [[]]);
 });
+
+test('groupEmbeds also caps cumulative size per message at 6000 chars, even under 10 embeds', () => {
+  const embeds = Array.from({ length: 5 }, (_, i) => ({
+    title: `e${i}`,
+    description: 'x'.repeat(1500 - `e${i}`.length),
+    fields: []
+  }));
+  // Chaque embed pèse exactement 1500 ; 4 embeds = 6000 pile, le 5e doit partir dans un nouveau message.
+  const messages = groupEmbeds(embeds);
+
+  assert.equal(messages.length, 2);
+  assert.equal(messages[0].length, 4);
+  assert.equal(messages[1].length, 1);
+});
+
+test('groupEmbeds counts the footer in the per-message size budget', () => {
+  const embeds = [
+    { title: '', description: 'x'.repeat(3000), fields: [], footer: { text: 'y'.repeat(2999) } },
+    { title: '', description: 'x'.repeat(3000), fields: [] }
+  ];
+  // Premier embed : 3000 + 2999 (footer) = 5999. En ajouter un 2e de 3000 dépasserait 6000.
+  const messages = groupEmbeds(embeds);
+
+  assert.equal(messages.length, 2);
+  assert.equal(messages[0].length, 1);
+  assert.equal(messages[1].length, 1);
+});
+
+test('renderSummary footer shows the omitted count instead of claiming the full message count', () => {
+  const meta = { ...baseMeta, messageCount: 1000, includedCount: 800, omittedCount: 200 };
+  const embeds = renderSummary({ tldr: 't', vibe: 'v', topics: [{ title: 'Sujet', summary: 'Résumé.' }] }, meta);
+
+  const lastEmbed = embeds[embeds.length - 1];
+  assert.equal(lastEmbed.footer.text, '800 messages résumés sur 1000 · 10:00 → 14:32');
+});
+
+test('renderSummary footer shows the plain count when nothing was omitted', () => {
+  const meta = { ...baseMeta, omittedCount: 0 };
+  const embeds = renderSummary({ tldr: 't', vibe: 'v', topics: [{ title: 'Sujet', summary: 'Résumé.' }] }, meta);
+
+  const lastEmbed = embeds[embeds.length - 1];
+  assert.equal(lastEmbed.footer.text, '42 messages · 10:00 → 14:32');
+});

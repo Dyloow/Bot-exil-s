@@ -1,7 +1,9 @@
 /**
  * Rendu pur : transforme la réponse JSON du modèle en embeds Discord, sans import discord.js.
- * Respecte les limites officielles des embeds (description, fields, total, nombre par message).
+ * Respecte les limites officielles des embeds (description, fields, total par embed, total par message).
  */
+
+import { formatTime, truncatePlain } from './format.js';
 
 const FIELD_VALUE_MAX = 1024;
 const FIELD_NAME_MAX = 256;
@@ -10,14 +12,6 @@ const FIELDS_MAX = 25;
 const EMBED_TOTAL_MAX = 6000;
 export const EMBEDS_PER_MESSAGE_MAX = 10;
 const COLOR = 0x5865f2;
-
-/**
- * Coupe un texte à `max` caractères en ajoutant « … » si besoin.
- */
-function truncate(text, max) {
-  if (!text) return text;
-  return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
-}
 
 /**
  * Découpe un texte en morceaux de `max` caractères, en coupant sur un saut de ligne si possible.
@@ -38,15 +32,6 @@ function chunkText(text, max) {
 }
 
 /**
- * Formate une heure locale HH:mm pour le pied de page.
- */
-function formatTime(date, timeZone = 'Europe/Paris') {
-  return new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone }).format(
-    date
-  );
-}
-
-/**
  * Construit le titre de l'embed, avec un suffixe « (suite) » pour les embeds suivants.
  */
 function buildTitle(meta, suffix) {
@@ -55,15 +40,22 @@ function buildTitle(meta, suffix) {
 }
 
 /**
- * Construit le pied de page : nombre de messages et période couverte.
+ * Construit le pied de page : nombre de messages (et combien ont été omis par le budget), et la période.
  */
 function buildFooter(meta) {
   if (!meta.messageCount) return null;
+
   const period =
     meta.periodStart && meta.periodEnd
       ? ` · ${formatTime(meta.periodStart, meta.timeZone)} → ${formatTime(meta.periodEnd, meta.timeZone)}`
       : '';
-  return { text: `${meta.messageCount} messages${period}` };
+
+  const countText =
+    meta.omittedCount > 0
+      ? `${meta.includedCount ?? meta.messageCount - meta.omittedCount} messages résumés sur ${meta.messageCount}`
+      : `${meta.messageCount} messages`;
+
+  return { text: `${countText}${period}` };
 }
 
 /**
@@ -71,12 +63,12 @@ function buildFooter(meta) {
  */
 function fieldsForTopic(topic) {
   const emoji = topic.emoji ?? '💬';
-  const name = truncate(`${emoji} ${topic.title ?? 'Sujet'}`.trim(), FIELD_NAME_MAX);
+  const name = truncatePlain(`${emoji} ${topic.title ?? 'Sujet'}`.trim(), FIELD_NAME_MAX);
   const people = Array.isArray(topic.people) && topic.people.length > 0 ? `\n— ${topic.people.join(', ')}` : '';
   const fullValue = `${topic.summary ?? ''}${people}`.trim() || '—';
 
   return chunkText(fullValue, FIELD_VALUE_MAX).map((chunk, i) => ({
-    name: i === 0 ? name : truncate(`${name} (suite)`, FIELD_NAME_MAX),
+    name: i === 0 ? name : truncatePlain(`${name} (suite)`, FIELD_NAME_MAX),
     value: chunk,
     inline: false
   }));
@@ -84,11 +76,16 @@ function fieldsForTopic(topic) {
 
 /**
  * Répartit la description et les fields dans un ou plusieurs embeds sous les limites Discord.
+ * Le footer est réservé sur le budget de chaque embed (il n'est posé que sur le dernier, mais sa taille
+ * doit rester couverte quel que soit l'embed qui finit par être le dernier pendant l'empilement).
  */
 function packIntoEmbeds(description, fields, meta) {
   const embeds = [];
   let current = null;
   let runningLength = 0;
+
+  const footer = buildFooter(meta);
+  const effectiveMax = EMBED_TOTAL_MAX - (footer?.text?.length ?? 0);
 
   function newEmbed(withDescription) {
     current = { color: COLOR, title: buildTitle(meta, embeds.length > 0 ? '(suite)' : ''), fields: [] };
@@ -102,7 +99,7 @@ function packIntoEmbeds(description, fields, meta) {
   for (const field of fields) {
     const fieldLength = field.name.length + field.value.length;
     const overflowsFields = current.fields.length >= FIELDS_MAX;
-    const overflowsChars = runningLength + fieldLength > EMBED_TOTAL_MAX;
+    const overflowsChars = runningLength + fieldLength > effectiveMax;
 
     if (overflowsFields || overflowsChars) {
       newEmbed(false);
@@ -112,7 +109,6 @@ function packIntoEmbeds(description, fields, meta) {
     runningLength += fieldLength;
   }
 
-  const footer = buildFooter(meta);
   if (footer) embeds[embeds.length - 1].footer = footer;
 
   return embeds;
@@ -159,7 +155,7 @@ export function renderSummary(input, meta = {}) {
 
   const tldr = data.tldr ? `**TL;DR**\n${data.tldr}` : '';
   const vibe = data.vibe ? `\n\n_${data.vibe}_` : '';
-  const description = truncate(`${tldr}${vibe}`.trim() || 'Rien à signaler.', DESCRIPTION_MAX);
+  const description = truncatePlain(`${tldr}${vibe}`.trim() || 'Rien à signaler.', DESCRIPTION_MAX);
 
   const fields = data.topics.flatMap(fieldsForTopic);
 
@@ -167,12 +163,42 @@ export function renderSummary(input, meta = {}) {
 }
 
 /**
- * Regroupe les embeds par paquets de `maxPerMessage` (10 par défaut), pour respecter la limite Discord par message.
+ * Taille totale d'un embed telle que comptée par Discord : titre + description + footer + author + fields.
+ */
+function embedSize(embed) {
+  const titleLen = embed.title?.length ?? 0;
+  const descLen = embed.description?.length ?? 0;
+  const footerLen = embed.footer?.text?.length ?? 0;
+  const authorLen = embed.author?.name?.length ?? 0;
+  const fieldsLen = (embed.fields ?? []).reduce((sum, f) => sum + (f.name?.length ?? 0) + (f.value?.length ?? 0), 0);
+  return titleLen + descLen + footerLen + authorLen + fieldsLen;
+}
+
+/**
+ * Regroupe les embeds par message : au plus `maxPerMessage` embeds (10 par défaut) ET au plus 6000
+ * caractères cumulés par message, comme l'exige Discord (sinon le message entier est rejeté).
  */
 export function groupEmbeds(embeds, maxPerMessage = EMBEDS_PER_MESSAGE_MAX) {
   const messages = [];
-  for (let i = 0; i < embeds.length; i += maxPerMessage) {
-    messages.push(embeds.slice(i, i + maxPerMessage));
+  let current = [];
+  let currentSize = 0;
+
+  for (const embed of embeds) {
+    const size = embedSize(embed);
+    const overflowsCount = current.length >= maxPerMessage;
+    const overflowsChars = current.length > 0 && currentSize + size > EMBED_TOTAL_MAX;
+
+    if (overflowsCount || overflowsChars) {
+      messages.push(current);
+      current = [];
+      currentSize = 0;
+    }
+
+    current.push(embed);
+    currentSize += size;
   }
+
+  messages.push(current);
+
   return messages.length > 0 ? messages : [[]];
 }
