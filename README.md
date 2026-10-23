@@ -120,7 +120,7 @@ NODE_ENV=production
 
 ### Étape 3 : Configurer le bot
 
-Éditez le fichier `config.json` :
+Éditez le fichier `src/config.json` :
 
 ```json
 {
@@ -150,14 +150,11 @@ NODE_ENV=production
     "panicModeThreshold": 10
   },
   "summary": {
-    "enabled": true,
     "maxMessages": 100,
-    "minMessageLength": 10,
+    "maxCount": 1000,
+    "maxHours": 48,
     "excludeBotMessages": true,
-    "autoTriggerThreshold": 150,
-    "scheduledTimes": ["00:00", "04:00", "08:00", "12:00", "16:00", "20:00"],
-    "maxTokens": 3000,
-    "summaryLength": "brief"
+    "autoTriggerThreshold": 0
   }
 }
 ```
@@ -411,7 +408,7 @@ docker run -d --name discord-bot --restart unless-stopped discord-bot
 
 ### Ajuster les quotas
 
-Dans `config.json` :
+Dans `src/config.json` :
 
 ```json
 "moderation": {
@@ -463,7 +460,7 @@ NODE_ENV=development npm start
 
 - Vérifier que le bot a bien le **Message Content Intent** activé
 - Vérifier les permissions du bot dans le serveur
-- Vérifier les rôles dans `config.json`
+- Vérifier les rôles dans `src/config.json`
 
 ### Les résumés ne fonctionnent pas
 
@@ -475,7 +472,7 @@ NODE_ENV=development npm start
 
 - Vérifier que le rôle du bot est **au-dessus** des autres rôles
 - Vérifier les permissions "Voir les logs d'audit"
-- Vérifier `config.json` > `roles.moderatorRoles`
+- Vérifier `src/config.json` > `roles.moderatorRoles`
 
 ---
 
@@ -485,17 +482,19 @@ NODE_ENV=development npm start
 discord-bot-guardian/
 ├── src/
 │   ├── index.js                 # Point d'entrée principal
+│   ├── config.json              # Configuration principale
 │   ├── config/
 │   │   └── ConfigManager.js     # Gestion de la config
 │   ├── modules/
 │   │   ├── ModerationGuard.js   # Protection anti-abus
 │   │   ├── SummaryManager.js    # Résumés IA
+│   │   ├── summary/             # transcript.js, range.js, render.js (logique pure, testée)
 │   │   ├── ValidationSystem.js  # Validation collaborative
 │   │   └── Scheduler.js         # Tâches planifiées
 │   └── utils/
 │       └── Logger.js            # Système de logs
+├── test/                        # Tests unitaires (node:test)
 ├── logs/                        # Logs (créé automatiquement)
-├── config.json                  # Configuration principale
 ├── .env                         # Variables d'environnement
 └── package.json                 # Dépendances Node.js
 ```

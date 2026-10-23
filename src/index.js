@@ -154,9 +154,9 @@ class DiscordBot {
     if (logTalkId && !logTalkId.includes('REMPLACER')) {
       this.logChannel = this.guild.channels.cache.get(logTalkId);
 
-      if (this.logTalkId) {
-        logger.setLogChannel(this.logTalkId);
-        logger.info(`📝 Channel de logs configuré: #${this.logTalkId.name}`);
+      if (this.logChannel) {
+        logger.setLogChannel(this.logChannel);
+        logger.info(`📝 Channel de logs configuré: #${this.logChannel.name}`);
       } else {
         logger.warn(`Channel de logs ${logTalkId} introuvable - Logs Discord désactivés`);
       }
@@ -572,6 +572,8 @@ class DiscordBot {
           } else {
             await message.reply('❌ Le système de comparaison de salaires n\'est pas disponible.');
           }
+          break;
+
         case 'roulette-russe':
         case 'roulette':
         case 'rr':
@@ -687,9 +689,13 @@ class DiscordBot {
         {
           name: 'Modules actifs',
           value: [
-            this.moderationGuard ? 'Protection' : 'Protection',
-            this.summaryManager ? 'Résumés IA' : 'Résumés IA',
-            this.scheduler ? 'Scheduler' : 'Scheduler'
+            `${this.moderationGuard ? '✅' : '❌'} Protection`,
+            `${this.summaryManager ? '✅' : '❌'} Résumés IA`,
+            `${this.scheduler ? '✅' : '❌'} Scheduler`,
+            `${this.voteSystem ? '✅' : '❌'} Vote`,
+            `${this.salaryChecker ? '✅' : '❌'} Comparateur de salaires`,
+            `${this.rouletteRusse ? '✅' : '❌'} Roulette russe`,
+            `${this.randomIntervention ? '✅' : '❌'} Intervention aléatoire`
           ].join('\n'),
           inline: false
         }
@@ -731,15 +737,15 @@ class DiscordBot {
         {
           name: 'Résumés IA',
           value: [
-            `Activé: ${summaryConfig.enabled ? 'Oui' : 'Non'}`,
             `Messages max: ${summaryConfig.maxMessages}`,
-            `Seuil auto: ${summaryConfig.autoTriggerThreshold}`,
-            `Planifications: ${summaryConfig.scheduledTimes.length}/jour`
+            `Cooldown: ${summaryConfig.cooldownSeconds}s`,
+            `Images max: ${summaryConfig.maxImages}`,
+            `Seuil auto: ${summaryConfig.autoTriggerThreshold}`
           ].join('\n'),
           inline: true
         }
       ],
-      footer: { text: 'Modifiez config.json pour changer ces paramètres' },
+      footer: { text: 'Modifiez src/config.json pour changer ces paramètres' },
       timestamp: new Date()
     };
 
